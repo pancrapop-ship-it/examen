@@ -1,12 +1,17 @@
 """
 RSA Quiz Interactivo - Starbucks
-Quiz de inocuidad alimentaria para 14 colaboradores.
+Quiz de inocuidad alimentaria.
+CORRECCIONES:
+  - Chips/selección múltiple: sin límite de 2, permite marcar todas las necesarias
+  - Verdadero/Falso: el feedback y la corrección aparecen SOLO tras presionar Siguiente
+  - Todas las preguntas: el feedback aparece SOLO tras presionar Siguiente (no instantáneo)
+  - P15 (fill_multiple): keywords corregidos — ictericia, fiebre, lesión expuesta
+  - Sin límite de 14 intentos
 """
 
 import streamlit as st
 import random
 import uuid
-import hashlib
 import json
 import datetime
 import platform
@@ -58,10 +63,8 @@ html, body, [data-testid="stAppViewContainer"] {
 
 [data-testid="stHeader"] { background: transparent !important; }
 
-/* Ocultar menú hamburguesa y pie */
 #MainMenu, footer, header { visibility: hidden; }
 
-/* ── Tarjeta principal ── */
 .quiz-card {
     background: var(--card-bg);
     backdrop-filter: blur(18px);
@@ -79,7 +82,6 @@ html, body, [data-testid="stAppViewContainer"] {
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Encabezado logo-like ── */
 .app-header {
     text-align: center;
     padding: 2rem 0 1.2rem;
@@ -107,7 +109,6 @@ html, body, [data-testid="stAppViewContainer"] {
     margin: 0.3rem 0 0 !important;
 }
 
-/* ── Código de validación ── */
 .validation-badge {
     background: linear-gradient(135deg, var(--green-mid), var(--green-dark));
     color: white !important;
@@ -137,7 +138,6 @@ html, body, [data-testid="stAppViewContainer"] {
     display: block;
 }
 
-/* ── Barra de progreso ── */
 .progress-wrap {
     background: var(--green-light);
     border-radius: 99px;
@@ -152,7 +152,6 @@ html, body, [data-testid="stAppViewContainer"] {
     transition: width 0.6s cubic-bezier(.4,0,.2,1);
 }
 
-/* ── Número de pregunta ── */
 .q-meta {
     display: flex;
     align-items: center;
@@ -177,7 +176,6 @@ html, body, [data-testid="stAppViewContainer"] {
     letter-spacing: 0.04em;
 }
 
-/* ── Texto de pregunta ── */
 .q-text {
     font-family: 'Syne', sans-serif;
     font-size: 1.18rem;
@@ -187,34 +185,6 @@ html, body, [data-testid="stAppViewContainer"] {
     margin-bottom: 1.3rem;
 }
 
-/* ── Chips (lluvia de cuadros) ── */
-.chips-area {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-    margin-bottom: 1.1rem;
-}
-.chip {
-    background: var(--green-light);
-    color: var(--green-mid) !important;
-    border: 2px solid transparent;
-    border-radius: 99px;
-    padding: 0.45rem 1.1rem;
-    font-size: 0.88rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.22s ease;
-    user-select: none;
-}
-.chip:hover { border-color: var(--green-dark); background: #c5e0d6; }
-.chip.selected {
-    background: var(--green-dark);
-    color: white !important;
-    border-color: var(--green-dark);
-    box-shadow: 0 2px 12px rgba(0,112,74,0.25);
-}
-
-/* ── Comodín/Ayuda ── */
 .joker-box {
     background: linear-gradient(135deg, rgba(245,166,35,0.12), rgba(196,123,55,0.1));
     border: 1.5px solid var(--amber);
@@ -227,7 +197,6 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 .joker-box strong { color: var(--copper) !important; }
 
-/* ── Botones principales ── */
 .stButton > button {
     font-family: 'Syne', sans-serif !important;
     font-weight: 700 !important;
@@ -239,7 +208,6 @@ html, body, [data-testid="stAppViewContainer"] {
     border: none !important;
 }
 
-/* Botón primario (verde) */
 div[data-testid="stButton"]:not(.btn-secondary) > button {
     background: linear-gradient(135deg, var(--green-dark), #005c3b) !important;
     color: white !important;
@@ -250,14 +218,12 @@ div[data-testid="stButton"]:not(.btn-secondary) > button:hover {
     transform: translateY(-2px) !important;
 }
 
-/* ── Radio y checkboxes ── */
 div[data-testid="stRadio"] label,
 div[data-testid="stCheckbox"] label {
     font-size: 0.95rem !important;
     color: var(--text-dark) !important;
 }
 
-/* ── Text inputs ── */
 div[data-testid="stTextInput"] input,
 div[data-testid="stTextArea"] textarea {
     border-radius: var(--radius-sm) !important;
@@ -274,7 +240,6 @@ div[data-testid="stTextArea"] textarea:focus {
     box-shadow: 0 0 0 3px rgba(0,112,74,0.1) !important;
 }
 
-/* ── Score final ── */
 .score-big {
     text-align: center;
     padding: 2rem 1.5rem;
@@ -317,7 +282,6 @@ div[data-testid="stTextArea"] textarea:focus {
     color: var(--green-dark) !important;
 }
 
-/* ── Alert / feedback ── */
 .feedback-correct {
     background: rgba(0,112,74,0.1);
     border-left: 4px solid var(--green-dark);
@@ -337,7 +301,6 @@ div[data-testid="stTextArea"] textarea:focus {
     color: var(--copper) !important;
 }
 
-/* ── Confetti canvas ── */
 #confetti-canvas {
     position: fixed;
     top: 0; left: 0;
@@ -346,7 +309,6 @@ div[data-testid="stTextArea"] textarea:focus {
     z-index: 9999;
 }
 
-/* ── Drag & drop order list ── */
 .order-item {
     background: var(--card-bg);
     border: 1.5px solid rgba(30,57,50,0.15);
@@ -365,7 +327,6 @@ div[data-testid="stTextArea"] textarea:focus {
     font-size: 1.1rem;
 }
 
-/* ── Aviso handwash ── */
 .handwash-notice {
     background: linear-gradient(135deg, var(--green-mid), var(--green-dark));
     color: white !important;
@@ -387,7 +348,6 @@ div[data-testid="stTextArea"] textarea:focus {
     color: white !important;
 }
 
-/* ── Responsive ── */
 @media (max-width: 600px) {
     .quiz-card { padding: 1.4rem 1.2rem; }
     .app-header h1 { font-size: 1.5rem !important; }
@@ -399,24 +359,20 @@ div[data-testid="stTextArea"] textarea:focus {
 # ─── Utilidades ──────────────────────────────────────────────────────────────
 
 def similarity(a: str, b: str) -> float:
-    """Similitud entre dos cadenas (0–1)."""
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 def flexible_match(response: str, keywords: list, threshold: float = 0.55) -> bool:
-    """Verdadero si la respuesta contiene al menos uno de los keywords con similitud suficiente."""
     resp = response.lower().strip()
     for kw in keywords:
         kw_l = kw.lower()
         if kw_l in resp:
             return True
-        words = resp.split()
-        for w in words:
+        for w in resp.split():
             if similarity(w, kw_l) >= threshold:
                 return True
     return False
 
 def count_keywords(response: str, keywords: list, threshold: float = 0.55) -> int:
-    """Cuenta cuántos keywords distintos aparecen en la respuesta."""
     found = 0
     resp = response.lower()
     for kw in keywords:
@@ -431,7 +387,6 @@ def count_keywords(response: str, keywords: list, threshold: float = 0.55) -> in
     return found
 
 def generate_code() -> str:
-    """Genera código de 3 dígitos único."""
     return str(random.randint(100, 999))
 
 def header_html():
@@ -464,10 +419,8 @@ def progress_bar(current: int, total: int):
     """, unsafe_allow_html=True)
 
 # ─── Definición de preguntas ──────────────────────────────────────────────────
-# Cada pregunta es un dict con: id, type, text, points, y datos específicos.
 
 QUESTIONS_POOL = [
-    # ── P1 ──────────────────────────────────────────────────────────────────
     {
         "id": 1,
         "type": "multiple_choice",
@@ -476,7 +429,6 @@ QUESTIONS_POOL = [
         "correct": "1 a 4°C",
         "points": 5,
     },
-    # ── P2 ──────────────────────────────────────────────────────────────────
     {
         "id": 2,
         "type": "true_false",
@@ -484,7 +436,6 @@ QUESTIONS_POOL = [
         "correct": "Verdadero",
         "points": 5,
     },
-    # ── P3 ──────────────────────────────────────────────────────────────────
     {
         "id": 3,
         "type": "chips_select",
@@ -495,7 +446,6 @@ QUESTIONS_POOL = [
         "select_count": 3,
         "points": 6,
     },
-    # ── P4 ──────────────────────────────────────────────────────────────────
     {
         "id": 4,
         "type": "chips_select",
@@ -506,7 +456,6 @@ QUESTIONS_POOL = [
         "select_count": 4,
         "points": 6,
     },
-    # ── P5 ──────────────────────────────────────────────────────────────────
     {
         "id": 5,
         "type": "open",
@@ -514,7 +463,6 @@ QUESTIONS_POOL = [
         "keywords": ["químicos no autorizados", "químicos", "guardar producto", "producto cerca", "autorizado", "quimico"],
         "points": 5,
     },
-    # ── P6 ──────────────────────────────────────────────────────────────────
     {
         "id": 6,
         "type": "fill_blank",
@@ -522,7 +470,6 @@ QUESTIONS_POOL = [
         "keywords": ["microorganismos", "microorganismo", "bacterias", "bacteria"],
         "points": 5,
     },
-    # ── P7 ──────────────────────────────────────────────────────────────────
     {
         "id": 7,
         "type": "open",
@@ -530,7 +477,6 @@ QUESTIONS_POOL = [
         "keywords": ["contaminación", "física", "química", "biológica", "riesgo", "consumidor", "vida", "ponga en riesgo"],
         "points": 5,
     },
-    # ── P8 ──────────────────────────────────────────────────────────────────
     {
         "id": 8,
         "type": "open_joker",
@@ -540,7 +486,6 @@ QUESTIONS_POOL = [
         "keywords": ["frotar", "jabón", "20 segundos", "codos", "uñas", "secar", "toalla", "agua", "lavado"],
         "points": 6,
     },
-    # ── P9 ──────────────────────────────────────────────────────────────────
     {
         "id": 9,
         "type": "open_joker",
@@ -550,7 +495,6 @@ QUESTIONS_POOL = [
         "keywords": ["duty roaster", "duty roster", "duty", "roaster"],
         "points": 5,
     },
-    # ── P10 ─────────────────────────────────────────────────────────────────
     {
         "id": 10,
         "type": "open_bonus",
@@ -560,7 +504,6 @@ QUESTIONS_POOL = [
         "points": 7,
         "bonus_points": 2,
     },
-    # ── P11 ─────────────────────────────────────────────────────────────────
     {
         "id": 11,
         "type": "order",
@@ -569,7 +512,6 @@ QUESTIONS_POOL = [
         "correct_order": ["Lavar", "Enjuagar", "Sanitizar", "Secar al aire"],
         "points": 6,
     },
-    # ── P12 ─────────────────────────────────────────────────────────────────
     {
         "id": 12,
         "type": "fill_blank",
@@ -577,7 +519,6 @@ QUESTIONS_POOL = [
         "keywords": ["2", "dos"],
         "points": 4,
     },
-    # ── P13 ─────────────────────────────────────────────────────────────────
     {
         "id": 13,
         "type": "chips_select",
@@ -588,7 +529,6 @@ QUESTIONS_POOL = [
         "select_count": 7,
         "points": 7,
     },
-    # ── P14 ─────────────────────────────────────────────────────────────────
     {
         "id": 14,
         "type": "multiple_choice",
@@ -597,7 +537,7 @@ QUESTIONS_POOL = [
         "correct": "180°F",
         "points": 5,
     },
-    # ── P15 ─────────────────────────────────────────────────────────────────
+    # ── CORRECCIÓN P15: keywords actualizados con ictericia, fiebre, lesión expuesta ──
     {
         "id": 15,
         "type": "fill_multiple",
@@ -605,13 +545,12 @@ QUESTIONS_POOL = [
         "given": ["Diarrea", "Vómito"],
         "blanks": 3,
         "blank_keywords": [
-            ["fiebre", "temperatura"],
-            ["ictericia", "amarilla", "amarillo", "ictericia"],
-            ["lesión", "lesion", "herida", "expuesta", "cortada"],
+            ["fiebre", "temperatura", "calentura"],
+            ["ictericia", "amarilla", "amarillo", "piel amarilla", "ojos amarillos"],
+            ["lesión", "lesion", "herida", "expuesta", "cortada", "abierta", "lesión expuesta"],
         ],
         "points": 7,
     },
-    # ── P16 (SIEMPRE AL FINAL - posición -2) ────────────────────────────────
     {
         "id": 16,
         "type": "open_joker",
@@ -622,7 +561,6 @@ QUESTIONS_POOL = [
         "keywords": ["excluye", "excluir", "retira", "turno", "reporta", "reportar", "gerente", "zona"],
         "points": 8,
     },
-    # ── P17 (SIEMPRE AL FINAL - posición -1, adaptativa por rol) ────────────
     {
         "id": 17,
         "type": "open_role",
@@ -632,7 +570,6 @@ QUESTIONS_POOL = [
         "joker_non_gerencial": "Son 3 acciones.",
         "points": 10,
     },
-    # ── P18 ─────────────────────────────────────────────────────────────────
     {
         "id": 18,
         "type": "open_joker",
@@ -644,15 +581,9 @@ QUESTIONS_POOL = [
     },
 ]
 
-# Puntos que faltan para llegar a 100 si hay bonus → sumamos correctamente
-TOTAL_POINTS = sum(q.get("points", 0) for q in QUESTIONS_POOL)  # base
+TOTAL_POINTS = sum(q.get("points", 0) for q in QUESTIONS_POOL)
 
 def build_question_order(role: str) -> list:
-    """
-    Orden de preguntas:
-    - P16 y P17 siempre al final (en ese orden).
-    - El resto (1–15 + 18) mezclado aleatoriamente.
-    """
     fixed_end = [16, 17]
     pool_ids = [q["id"] for q in QUESTIONS_POOL if q["id"] not in fixed_end]
     random.shuffle(pool_ids)
@@ -666,10 +597,6 @@ def get_question(qid: int) -> dict:
 
 # ─── Guardar en Google Sheets ─────────────────────────────────────────────────
 def save_to_sheets(data: dict):
-    """
-    Guarda resultados en Google Sheets vía service account.
-    Requiere secrets: gcp_service_account y spreadsheet_id configurados en Streamlit Cloud.
-    """
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -678,7 +605,7 @@ def save_to_sheets(data: dict):
         spreadsheet_id = st.secrets.get("spreadsheet_id", None)
 
         if not creds_dict or not spreadsheet_id:
-            return  # No configurado → silencioso
+            return
 
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -688,7 +615,6 @@ def save_to_sheets(data: dict):
         client = gspread.authorize(creds)
         sheet = client.open_by_key(spreadsheet_id).sheet1
 
-        # Encabezados si hoja vacía
         if sheet.row_count < 1 or not sheet.row_values(1):
             sheet.append_row([
                 "Nombre", "Rol", "Código", "Score", "%", "Fecha", "Hora",
@@ -708,23 +634,25 @@ def save_to_sheets(data: dict):
             json.dumps(data.get("respuestas", {}), ensure_ascii=False),
         ])
     except Exception:
-        pass  # Falla silenciosa si no está configurado
+        pass
 
 # ─── Init session state ───────────────────────────────────────────────────────
 def init_state():
     defaults = {
-        "stage": "intro",           # intro | role | quiz | handwash | result
+        "stage": "intro",
         "nombre": "",
         "rol": "",
         "unique_code": generate_code(),
         "session_uuid": str(uuid.uuid4()),
         "q_order": [],
         "q_index": 0,
-        "scores": {},               # {qid: points_earned}
-        "answers": {},              # {qid: answer_text}
-        "joker_used": {},           # {qid: bool}
-        "chip_selections": {},      # {qid: [selected]}
-        "order_state": {},          # {qid: [current_order]}
+        "scores": {},
+        "answers": {},
+        "joker_used": {},
+        "chip_selections": {},
+        "order_state": {},
+        # ── NUEVO: controla si ya se presionó "Siguiente" para mostrar feedback ──
+        "submitted": {},   # {qid: True/False}
         "started_at": datetime.datetime.now().isoformat(),
         "saved": False,
     }
@@ -805,7 +733,6 @@ def screen_quiz():
 
     progress_bar(idx + 1, total)
 
-    # ── Encabezado de pregunta ──
     st.markdown(f"""
     <div class="q-meta">
         <span class="q-num">Pregunta {idx + 1}</span>
@@ -813,45 +740,202 @@ def screen_quiz():
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Render según tipo ──
     answered = render_question(q, qid)
 
-    # ── Botón siguiente ──
+    # ── Botón Siguiente ──
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("➡️  Siguiente pregunta", use_container_width=True, key=f"next_{qid}"):
-        if answered:
+    already_sub = st.session_state.submitted.get(qid, False)
+
+    if not already_sub:
+        if st.button("➡️  Siguiente pregunta", use_container_width=True, key=f"next_{qid}"):
+            if answered:
+                # Marcar como enviado → calcula score y muestra feedback
+                st.session_state.submitted[qid] = True
+                st.rerun()
+            else:
+                st.warning("Por favor responde la pregunta antes de continuar.")
+    else:
+        # Ya fue enviada → mostrar feedback y botón para avanzar
+        show_feedback(q, qid)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("▶️  Continuar", use_container_width=True, key=f"cont_{qid}"):
             st.session_state.q_index += 1
             st.rerun()
-        else:
-            st.warning("Por favor responde la pregunta antes de continuar.")
+
 
 def render_question(q: dict, qid: int) -> bool:
-    """Renderiza la pregunta y retorna True si fue respondida."""
+    """Renderiza la pregunta SIN feedback. Retorna True si fue respondida."""
+    t = q["type"]
+    already_sub = st.session_state.submitted.get(qid, False)
+
+    if t == "multiple_choice":
+        return render_multiple_choice(q, qid, already_sub)
+    elif t == "true_false":
+        return render_true_false(q, qid, already_sub)
+    elif t == "chips_select":
+        return render_chips(q, qid, already_sub)
+    elif t == "open":
+        return render_open(q, qid, already_sub)
+    elif t == "fill_blank":
+        return render_fill_blank(q, qid, already_sub)
+    elif t == "open_joker":
+        return render_open_joker(q, qid, already_sub)
+    elif t == "open_bonus":
+        return render_open_bonus(q, qid, already_sub)
+    elif t == "order":
+        return render_order(q, qid, already_sub)
+    elif t == "fill_multiple":
+        return render_fill_multiple(q, qid, already_sub)
+    elif t == "open_role":
+        return render_open_role(q, qid, already_sub)
+    return False
+
+
+def show_feedback(q: dict, qid: int):
+    """Muestra feedback y calcula score SOLO después de presionar Siguiente."""
+    t = q["type"]
+
+    # ── Calcular score si aún no se calculó ──
+    if qid not in st.session_state.scores:
+        compute_score(q, qid)
+
+    pts = st.session_state.scores.get(qid, 0)
+
+    if t == "multiple_choice":
+        if pts > 0:
+            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="feedback-wrong">❌ Respuesta incorrecta. La correcta: <strong>{q["correct"]}</strong></div>', unsafe_allow_html=True)
+
+    elif t == "true_false":
+        if pts > 0:
+            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="feedback-wrong">❌ La respuesta correcta era <strong>Verdadero</strong>.</div>', unsafe_allow_html=True)
+
+    elif t == "chips_select":
+        if pts == q["points"]:
+            st.markdown('<div class="feedback-correct">✅ ¡Perfecto!</div>', unsafe_allow_html=True)
+        else:
+            correct_set = set(q["correct"])
+            sel = set(st.session_state.chip_selections.get(f"chips_{qid}", []))
+            missed = correct_set - sel
+            missed_txt = ", ".join(missed) if missed else "—"
+            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts}/{q["points"]} pts). Faltaron: {missed_txt}</div>', unsafe_allow_html=True)
+
+    elif t in ("open", "open_joker", "open_bonus", "open_role"):
+        if pts >= q["points"]:
+            st.markdown('<div class="feedback-correct">✅ ¡Bien respondido!</div>', unsafe_allow_html=True)
+        elif pts > 0:
+            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts}/{q["points"]} pts).</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="feedback-wrong">Respuesta incompleta o incorrecta.</div>', unsafe_allow_html=True)
+
+    elif t == "fill_blank":
+        if pts > 0:
+            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
+
+    elif t == "fill_multiple":
+        if pts == q["points"]:
+            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
+        elif pts > 0:
+            blanks = q["blanks"]
+            hits = round(pts * blanks / q["points"])
+            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({hits}/{blanks} síntomas).</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
+
+    elif t == "order":
+        if pts == q["points"]:
+            st.markdown('<div class="feedback-correct">✅ ¡Orden correcto!</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="feedback-wrong">Orden incorrecto ({pts}/{q["points"]} pts). Correcto: {" → ".join(q["correct_order"])}</div>', unsafe_allow_html=True)
+
+
+def compute_score(q: dict, qid: int):
+    """Calcula y almacena el puntaje de la pregunta a partir de las respuestas guardadas."""
     t = q["type"]
 
     if t == "multiple_choice":
-        return render_multiple_choice(q, qid)
-    elif t == "true_false":
-        return render_true_false(q, qid)
-    elif t == "chips_select":
-        return render_chips(q, qid)
-    elif t == "open":
-        return render_open(q, qid)
-    elif t == "fill_blank":
-        return render_fill_blank(q, qid)
-    elif t == "open_joker":
-        return render_open_joker(q, qid)
-    elif t == "open_bonus":
-        return render_open_bonus(q, qid)
-    elif t == "order":
-        return render_order(q, qid)
-    elif t == "fill_multiple":
-        return render_fill_multiple(q, qid)
-    elif t == "open_role":
-        return render_open_role(q, qid)
-    return False
+        ans = st.session_state.answers.get(qid, "")
+        pts = q["points"] if ans == q["correct"] else 0
+        st.session_state.scores[qid] = pts
 
-# ── Helpers de tarjeta ──
+    elif t == "true_false":
+        ans = st.session_state.answers.get(qid, "")
+        pts = q["points"] if ans == q["correct"] else 0
+        st.session_state.scores[qid] = pts
+
+    elif t == "chips_select":
+        sel = set(st.session_state.chip_selections.get(f"chips_{qid}", []))
+        correct_set = set(q["correct"])
+        hits = len(sel & correct_set)
+        pts = round((hits / len(correct_set)) * q["points"])
+        st.session_state.scores[qid] = pts
+
+    elif t == "open":
+        ans = st.session_state.answers.get(qid, "")
+        hits = count_keywords(ans, q["keywords"])
+        ratio = hits / max(len(q["keywords"]), 1)
+        pts = q["points"] if ratio >= 0.4 else 0
+        st.session_state.scores[qid] = pts
+
+    elif t == "fill_blank":
+        ans = st.session_state.answers.get(qid, "")
+        pts = q["points"] if flexible_match(ans, q["keywords"]) else 0
+        st.session_state.scores[qid] = pts
+
+    elif t == "open_joker":
+        ans = st.session_state.answers.get(qid, "")
+        hits = count_keywords(ans, q["keywords"])
+        ratio = hits / max(len(q["keywords"]), 1)
+        pts = q["points"] if ratio >= 0.35 else 0
+        st.session_state.scores[qid] = pts
+
+    elif t == "open_bonus":
+        ans = st.session_state.answers.get(qid, "")
+        base_hits  = count_keywords(ans, q["base_keywords"])
+        bonus_hits = count_keywords(ans, q["bonus_keywords"])
+        ratio = base_hits / max(len(q["base_keywords"]), 1)
+        pts = round(ratio * q["points"])
+        if bonus_hits >= 2:
+            pts = min(pts + q["bonus_points"], q["points"] + q["bonus_points"])
+        st.session_state.scores[qid] = min(pts, q["points"] + q["bonus_points"])
+
+    elif t == "order":
+        current = st.session_state.order_state.get(f"order_{qid}", [])
+        if current == q["correct_order"]:
+            pts = q["points"]
+        else:
+            hits = sum(1 for a, b in zip(current, q["correct_order"]) if a == b)
+            pts = round((hits / len(q["correct_order"])) * q["points"])
+        st.session_state.scores[qid] = pts
+
+    elif t == "fill_multiple":
+        blanks_ans = st.session_state.answers.get(qid, [])
+        hits = 0
+        for i, val in enumerate(blanks_ans):
+            if i < len(q["blank_keywords"]) and flexible_match(val, q["blank_keywords"][i]):
+                hits += 1
+        pts = round((hits / q["blanks"]) * q["points"])
+        st.session_state.scores[qid] = pts
+
+    elif t == "open_role":
+        ans = st.session_state.answers.get(qid, "")
+        rol = st.session_state.rol
+        is_gerencial = (rol == "Gerencial")
+        keywords = q["keywords_gerencial"] if is_gerencial else q["keywords_base"]
+        required_hits = 3 if is_gerencial else 2
+        hits = count_keywords(ans, keywords)
+        pts = round(min(hits / max(len(keywords), 1), 1.0) * q["points"])
+        if hits >= required_hits:
+            pts = q["points"]
+        st.session_state.scores[qid] = pts
+
+
+# ─── Helpers de tarjeta ──
 def card_open(extra_style=""):
     st.markdown(f'<div class="quiz-card" style="{extra_style}">', unsafe_allow_html=True)
 def card_close():
@@ -860,79 +944,47 @@ def card_close():
 def qtext(text):
     st.markdown(f'<div class="q-text">{text}</div>', unsafe_allow_html=True)
 
-def already_scored(qid):
-    return qid in st.session_state.scores
-
-def mark_score(qid, pts):
-    if qid not in st.session_state.scores:
-        st.session_state.scores[qid] = pts
-
 # ─── Tipo: Selección múltiple ─────────────────────────────────────────────────
-def render_multiple_choice(q, qid):
+def render_multiple_choice(q, qid, disabled):
     card_open()
     qtext(q["text"])
     key = f"mc_{qid}"
-    options = q["options"]
-    sel = st.radio("", options, key=key, index=None)
+    sel = st.radio("", q["options"], key=key, index=None, disabled=disabled)
     card_close()
 
-    if sel is not None and not already_scored(qid):
-        if sel == q["correct"]:
-            mark_score(qid, q["points"])
-            st.session_state.answers[qid] = sel
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            mark_score(qid, 0)
-            st.session_state.answers[qid] = sel
-            st.markdown(f'<div class="feedback-wrong">❌ Respuesta incorrecta. La correcta: <strong>{q["correct"]}</strong></div>', unsafe_allow_html=True)
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">❌ La correcta era: <strong>{q["correct"]}</strong></div>', unsafe_allow_html=True)
+    if sel is not None:
+        st.session_state.answers[qid] = sel
 
-    return sel is not None or already_scored(qid)
+    return sel is not None or disabled
 
 # ─── Tipo: Verdadero/Falso ────────────────────────────────────────────────────
-def render_true_false(q, qid):
+def render_true_false(q, qid, disabled):
     card_open()
     qtext(q["text"])
     key = f"tf_{qid}"
-    sel = st.radio("", ["Verdadero", "Falso"], key=key, index=None)
+    sel = st.radio("", ["Verdadero", "Falso"], key=key, index=None, disabled=disabled)
 
-    extra_text = ""
-    if sel == "Falso":
-        extra_text = st.text_input("Escribe la respuesta correcta:", key=f"tf_extra_{qid}")
-        st.caption("Nota: la respuesta correcta era Verdadero — no se suman puntos por esta opción.")
+    # Si elige Falso, pedimos que escriba la respuesta correcta (sin revelar nada aún)
+    if sel == "Falso" and not disabled:
+        extra_text = st.text_input(
+            "¿Cuál crees que es la respuesta correcta?",
+            key=f"tf_extra_{qid}",
+        )
+        st.session_state.answers[qid] = f"Falso → {extra_text}"
+    elif sel == "Verdadero":
+        st.session_state.answers[qid] = "Verdadero"
 
     card_close()
 
-    if sel is not None and not already_scored(qid):
-        if sel == q["correct"]:
-            mark_score(qid, q["points"])
-            st.session_state.answers[qid] = sel
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            mark_score(qid, 0)
-            st.session_state.answers[qid] = f"Falso → {extra_text}"
-            st.markdown('<div class="feedback-wrong">❌ La respuesta correcta era <strong>Verdadero</strong>.</div>', unsafe_allow_html=True)
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">❌ La respuesta correcta era <strong>Verdadero</strong>.</div>', unsafe_allow_html=True)
+    return sel is not None or disabled
 
-    return sel is not None or already_scored(qid)
-
-# ─── Tipo: Chips (lluvia de cuadros) ─────────────────────────────────────────
-def render_chips(q, qid):
+# ─── Tipo: Chips (selección múltiple sin límite artificial) ──────────────────
+def render_chips(q, qid, disabled):
     card_open()
     qtext(q["text"])
     st.caption(q.get("instruction", "Selecciona las opciones correctas."))
 
-    # Construir lista completa mezclada (una vez por sesión)
+    # Construir lista mezclada una sola vez por sesión
     all_key = f"chips_all_{qid}"
     if all_key not in st.session_state:
         all_items = q["correct"] + q["distractors"]
@@ -940,19 +992,24 @@ def render_chips(q, qid):
         st.session_state[all_key] = all_items
 
     all_items = st.session_state[all_key]
-    sel_key   = f"chips_{qid}"
+    sel_key = f"chips_{qid}"
     if sel_key not in st.session_state.chip_selections:
         st.session_state.chip_selections[sel_key] = []
 
     selected = st.session_state.chip_selections[sel_key]
 
-    # Renderizar checkboxes como chips visuales
+    # ── CORRECCIÓN: checkboxes independientes, sin límite de 2 ──
     cols = st.columns(3)
     for i, item in enumerate(all_items):
         is_sel = item in selected
         col = cols[i % 3]
         with col:
-            checked = st.checkbox(item, value=is_sel, key=f"chip_{qid}_{i}", disabled=already_scored(qid))
+            checked = st.checkbox(
+                item,
+                value=is_sel,
+                key=f"chip_{qid}_{i}",
+                disabled=disabled,
+            )
             if checked and item not in selected:
                 selected.append(item)
             elif not checked and item in selected:
@@ -961,172 +1018,78 @@ def render_chips(q, qid):
     st.session_state.chip_selections[sel_key] = selected
     card_close()
 
-    responded = len(selected) > 0
-
-    if responded and not already_scored(qid):
-        correct_set = set(q["correct"])
-        sel_set     = set(selected)
-        correct_hits = len(sel_set & correct_set)
-        total_correct = len(correct_set)
-        pts = round((correct_hits / total_correct) * q["points"])
-        mark_score(qid, pts)
-        st.session_state.answers[qid] = list(selected)
-        if sel_set == correct_set:
-            st.markdown('<div class="feedback-correct">✅ ¡Perfecto!</div>', unsafe_allow_html=True)
-        else:
-            missed = correct_set - sel_set
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto. Faltaron: {", ".join(missed)}</div>', unsafe_allow_html=True)
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Perfecto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts}/{q["points"]} pts)</div>', unsafe_allow_html=True)
-
-    return responded or already_scored(qid)
+    return len(selected) > 0 or disabled
 
 # ─── Tipo: Pregunta abierta ───────────────────────────────────────────────────
-def render_open(q, qid):
+def render_open(q, qid, disabled):
     card_open()
     qtext(q["text"])
-    ans = st.text_area("Tu respuesta:", key=f"open_{qid}", height=100, disabled=already_scored(qid))
+    ans = st.text_area("Tu respuesta:", key=f"open_{qid}", height=100, disabled=disabled)
     card_close()
 
-    has_ans = bool(ans.strip()) or already_scored(qid)
-
-    if ans.strip() and not already_scored(qid):
-        hits = count_keywords(ans, q["keywords"])
-        ratio = hits / max(len(q["keywords"]), 1)
-        if ratio >= 0.4:
-            mark_score(qid, q["points"])
-            st.markdown('<div class="feedback-correct">✅ ¡Bien respondido!</div>', unsafe_allow_html=True)
-        else:
-            mark_score(qid, 0)
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta o incorrecta.</div>', unsafe_allow_html=True)
+    if ans.strip():
         st.session_state.answers[qid] = ans
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Bien respondido!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta.</div>', unsafe_allow_html=True)
 
-    return has_ans
+    return bool(ans.strip()) or disabled
 
 # ─── Tipo: Completar espacio en blanco ───────────────────────────────────────
-def render_fill_blank(q, qid):
+def render_fill_blank(q, qid, disabled):
     card_open()
     qtext(q["text"])
-    ans = st.text_input("Completa:", key=f"fill_{qid}", disabled=already_scored(qid))
+    ans = st.text_input("Completa:", key=f"fill_{qid}", disabled=disabled)
     card_close()
 
-    has_ans = bool(ans.strip()) or already_scored(qid)
-
-    if ans.strip() and not already_scored(qid):
-        if flexible_match(ans, q["keywords"]):
-            mark_score(qid, q["points"])
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            mark_score(qid, 0)
-            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
+    if ans.strip():
         st.session_state.answers[qid] = ans
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
 
-    return has_ans
+    return bool(ans.strip()) or disabled
 
 # ─── Tipo: Abierta con comodín/ayuda ─────────────────────────────────────────
-def render_open_joker(q, qid):
+def render_open_joker(q, qid, disabled):
     card_open()
     qtext(q["text"])
 
-    # Hint prefix si existe (P16)
     if "hint_prefix" in q:
         st.markdown(f"<p style='font-size:0.95rem;color:var(--text-mid);margin-bottom:0.7rem;'>{q['hint_prefix']}</p>", unsafe_allow_html=True)
 
-    # Botón comodín
     joker_key = f"joker_{qid}"
     if joker_key not in st.session_state.joker_used:
         st.session_state.joker_used[joker_key] = False
 
     col1, col2 = st.columns([1, 3])
     with col1:
-        if st.button(f"🎁 {q['joker_label']}", key=f"jbtn_{qid}", disabled=st.session_state.joker_used[joker_key]):
+        if st.button(f"🎁 {q['joker_label']}", key=f"jbtn_{qid}", disabled=st.session_state.joker_used[joker_key] or disabled):
             st.session_state.joker_used[joker_key] = True
             st.rerun()
 
     if st.session_state.joker_used[joker_key]:
         st.markdown(f'<div class="joker-box"><strong>💡 Pista:</strong> {q["joker"]}</div>', unsafe_allow_html=True)
 
-    ans = st.text_area("Tu respuesta:", key=f"openj_{qid}", height=100, disabled=already_scored(qid))
+    ans = st.text_area("Tu respuesta:", key=f"openj_{qid}", height=100, disabled=disabled)
     card_close()
 
-    has_ans = bool(ans.strip()) or already_scored(qid)
-
-    if ans.strip() and not already_scored(qid):
-        hits = count_keywords(ans, q["keywords"])
-        ratio = hits / max(len(q["keywords"]), 1)
-        if ratio >= 0.35:
-            mark_score(qid, q["points"])
-            st.markdown('<div class="feedback-correct">✅ ¡Bien respondido!</div>', unsafe_allow_html=True)
-        else:
-            mark_score(qid, 0)
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta.</div>', unsafe_allow_html=True)
+    if ans.strip():
         st.session_state.answers[qid] = ans
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Bien respondido!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta.</div>', unsafe_allow_html=True)
 
-    return has_ans
+    return bool(ans.strip()) or disabled
 
 # ─── Tipo: Abierta con bonus ──────────────────────────────────────────────────
-def render_open_bonus(q, qid):
+def render_open_bonus(q, qid, disabled):
     card_open()
     qtext(q["text"])
-    ans = st.text_area("Tu respuesta:", key=f"bonus_{qid}", height=120, disabled=already_scored(qid))
+    ans = st.text_area("Tu respuesta:", key=f"bonus_{qid}", height=120, disabled=disabled)
     card_close()
 
-    has_ans = bool(ans.strip()) or already_scored(qid)
-
-    if ans.strip() and not already_scored(qid):
-        base_hits  = count_keywords(ans, q["base_keywords"])
-        bonus_hits = count_keywords(ans, q["bonus_keywords"])
-        ratio = base_hits / max(len(q["base_keywords"]), 1)
-        pts = round(ratio * q["points"])
-        if bonus_hits >= 2:
-            pts = min(pts + q["bonus_points"], q["points"] + q["bonus_points"])
-        mark_score(qid, min(pts, q["points"] + q["bonus_points"]))
+    if ans.strip():
         st.session_state.answers[qid] = ans
-        if pts >= q["points"]:
-            extra = " ⭐ ¡Bonus obtenido!" if bonus_hits >= 2 else ""
-            st.markdown(f'<div class="feedback-correct">✅ ¡Excelente!{extra}</div>', unsafe_allow_html=True)
-        elif pts > 0:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts} pts).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta.</div>', unsafe_allow_html=True)
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts >= q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Excelente!</div>', unsafe_allow_html=True)
-        elif pts > 0:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts} pts).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta.</div>', unsafe_allow_html=True)
 
-    return has_ans
+    return bool(ans.strip()) or disabled
 
 # ─── Tipo: Ordenar pasos ──────────────────────────────────────────────────────
-def render_order(q, qid):
+def render_order(q, qid, disabled):
     card_open()
     qtext(q["text"])
-    st.caption("Ordena los pasos arrastrando con los selectores de posición.")
+    st.caption("Ordena los pasos usando los botones ▲ ▼.")
 
     order_key = f"order_{qid}"
     if order_key not in st.session_state.order_state:
@@ -1143,7 +1106,7 @@ def render_order(q, qid):
         with c2:
             st.markdown(f"<div class='order-item'><span class='order-handle'>☰</span> {item}</div>", unsafe_allow_html=True)
         with c3:
-            if not already_scored(qid):
+            if not disabled:
                 if i > 0 and st.button("▲", key=f"up_{qid}_{i}"):
                     current[i], current[i-1] = current[i-1], current[i]
                     st.session_state.order_state[order_key] = current
@@ -1155,29 +1118,12 @@ def render_order(q, qid):
 
     card_close()
 
-    if not already_scored(qid):
-        if st.button("✔ Confirmar orden", key=f"confirm_order_{qid}"):
-            if current == q["correct_order"]:
-                mark_score(qid, q["points"])
-                st.markdown('<div class="feedback-correct">✅ ¡Orden correcto!</div>', unsafe_allow_html=True)
-            else:
-                # Puntaje parcial por pasos en posición correcta
-                hits = sum(1 for a, b in zip(current, q["correct_order"]) if a == b)
-                pts  = round((hits / len(q["correct_order"])) * q["points"])
-                mark_score(qid, pts)
-                st.markdown(f'<div class="feedback-wrong">Orden incorrecto. Correcto: {" → ".join(q["correct_order"])}</div>', unsafe_allow_html=True)
-            st.session_state.answers[qid] = current
-    else:
-        pts = st.session_state.scores[qid]
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Orden correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">Orden incorrecto ({pts}/{q["points"]} pts).</div>', unsafe_allow_html=True)
-
-    return already_scored(qid)
+    # La pregunta de orden se considera respondida cuando el usuario ha
+    # interactuado al menos una vez (siempre tiene un orden, así que True)
+    return True
 
 # ─── Tipo: Completar múltiples faltantes ─────────────────────────────────────
-def render_fill_multiple(q, qid):
+def render_fill_multiple(q, qid, disabled):
     card_open()
     qtext(q["text"])
     st.markdown(f"<p style='font-size:0.88rem;color:var(--text-mid);'>Ya dados: <strong>{', '.join(q['given'])}</strong></p>", unsafe_allow_html=True)
@@ -1185,38 +1131,19 @@ def render_fill_multiple(q, qid):
 
     answers_blanks = []
     for i in range(q["blanks"]):
-        val = st.text_input(f"Síntoma {i+1}:", key=f"blank_{qid}_{i}", disabled=already_scored(qid))
+        val = st.text_input(f"Síntoma {i+1}:", key=f"blank_{qid}_{i}", disabled=disabled)
         answers_blanks.append(val)
 
     card_close()
 
-    all_filled = all(v.strip() for v in answers_blanks)
-
-    if all_filled and not already_scored(qid):
-        hits = 0
-        for i, val in enumerate(answers_blanks):
-            if flexible_match(val, q["blank_keywords"][i]):
-                hits += 1
-        pts = round((hits / q["blanks"]) * q["points"])
-        mark_score(qid, pts)
+    if any(v.strip() for v in answers_blanks):
         st.session_state.answers[qid] = answers_blanks
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        elif pts > 0:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({hits}/{q["blanks"]}).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts}/{q["points"]} pts).</div>', unsafe_allow_html=True)
 
-    return all_filled or already_scored(qid)
+    all_filled = all(v.strip() for v in answers_blanks)
+    return all_filled or disabled
 
 # ─── Tipo: Abierta adaptativa por rol (P17) ───────────────────────────────────
-def render_open_role(q, qid):
+def render_open_role(q, qid, disabled):
     card_open()
     qtext(q["text"])
 
@@ -1225,38 +1152,14 @@ def render_open_role(q, qid):
 
     if not is_gerencial:
         st.markdown('<div class="joker-box"><strong>💡 Ayuda:</strong> Son 3 acciones.</div>', unsafe_allow_html=True)
-        keywords = q["keywords_base"]
-        required_hits = 2
-    else:
-        keywords = q["keywords_gerencial"]
-        required_hits = 3
 
-    ans = st.text_area("Tu respuesta:", key=f"role_q_{qid}", height=130, disabled=already_scored(qid))
+    ans = st.text_area("Tu respuesta:", key=f"role_q_{qid}", height=130, disabled=disabled)
     card_close()
 
-    has_ans = bool(ans.strip()) or already_scored(qid)
-
-    if ans.strip() and not already_scored(qid):
-        hits = count_keywords(ans, keywords)
-        pts  = round(min(hits / max(len(keywords), 1), 1.0) * q["points"])
-        if hits >= required_hits:
-            pts = q["points"]
-        mark_score(qid, pts)
+    if ans.strip():
         st.session_state.answers[qid] = ans
-        if pts >= q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Muy bien!</div>', unsafe_allow_html=True)
-        elif pts > 0:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts} pts).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta.</div>', unsafe_allow_html=True)
-    elif already_scored(qid):
-        pts = st.session_state.scores[qid]
-        if pts >= q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Muy bien!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts} pts).</div>', unsafe_allow_html=True)
 
-    return has_ans
+    return bool(ans.strip()) or disabled
 
 # ─── PANTALLA: LAVADO DE MANOS ────────────────────────────────────────────────
 def screen_handwash():
@@ -1282,18 +1185,10 @@ def screen_result():
     header_html()
     validation_badge()
 
-    # Calcular score
-    total_pts   = TOTAL_POINTS
-    earned      = sum(st.session_state.scores.values())
-    # Bonus puede hacer superar el tope por un momento → cap a 100
-    max_possible = total_pts + sum(q.get("bonus_points", 0) for q in QUESTIONS_POOL)
-    pct = round((earned / max_possible) * 100)
-    pct = min(pct, 100)
-    # Normalizar a 100
-    score_100 = round((earned / max_possible) * 100)
-    score_100 = min(score_100, 100)
+    max_possible = TOTAL_POINTS + sum(q.get("bonus_points", 0) for q in QUESTIONS_POOL)
+    earned = sum(st.session_state.scores.values())
+    score_100 = min(round((earned / max_possible) * 100), 100)
 
-    # Guardar en Sheets (una vez)
     if not st.session_state.saved:
         data = {
             "nombre":    st.session_state.nombre,
@@ -1310,7 +1205,6 @@ def screen_result():
         save_to_sheets(data)
         st.session_state.saved = True
 
-    # Mensaje según score
     if score_100 == 100:
         color = "#00704A"
         msg = "🏆 Excelente estimado, ganaste un abrazo de tu líder RSA. ¡Canjéalo cuando quieras!"
@@ -1336,24 +1230,22 @@ def screen_result():
     </div>
     """, unsafe_allow_html=True)
 
-    # Breakdown
     st.markdown('<div class="quiz-card">', unsafe_allow_html=True)
     st.markdown('<p style="font-family:Syne,sans-serif;font-weight:700;font-size:1rem;margin-bottom:0.8rem;">Detalle por pregunta</p>', unsafe_allow_html=True)
     for q in QUESTIONS_POOL:
-        qid    = q["id"]
+        qid = q["id"]
         earned_q = st.session_state.scores.get(qid, 0)
-        max_q  = q["points"] + q.get("bonus_points", 0)
-        label  = f"P{qid}: {q['text'][:55]}…" if len(q['text']) > 55 else f"P{qid}: {q['text']}"
-        pct_q  = "✅" if earned_q >= q["points"] else ("⚡" if earned_q > 0 else "❌")
+        max_q = q["points"] + q.get("bonus_points", 0)
+        label = f"P{qid}: {q['text'][:55]}…" if len(q['text']) > 55 else f"P{qid}: {q['text']}"
+        icon = "✅" if earned_q >= q["points"] else ("⚡" if earned_q > 0 else "❌")
         st.markdown(f"""
         <div class="breakdown-row">
-            <span>{pct_q} {label}</span>
+            <span>{icon} {label}</span>
             <span class="pts">{earned_q}/{max_q}</span>
         </div>
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Confetti si score alto
     if score_100 >= 70:
         st.markdown("""
         <canvas id="confetti-canvas"></canvas>
@@ -1400,7 +1292,6 @@ def screen_result():
         </script>
         """, unsafe_allow_html=True)
 
-    # Info de validación
     st.markdown(f"""
     <div style="background:rgba(30,57,50,0.05);border-radius:12px;padding:1rem 1.2rem;font-size:0.8rem;color:var(--text-light);margin-top:1rem;">
         👤 {st.session_state.nombre} · {st.session_state.rol} ·
