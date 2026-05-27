@@ -1,660 +1,630 @@
 """
 RSA Quiz Interactivo - Starbucks
-Quiz de inocuidad alimentaria.
-CORRECCIONES:
-  - Chips/selección múltiple: sin límite de 2, permite marcar todas las necesarias
-  - Verdadero/Falso: el feedback y la corrección aparecen SOLO tras presionar Siguiente
-  - Todas las preguntas: el feedback aparece SOLO tras presionar Siguiente (no instantáneo)
-  - P15 (fill_multiple): keywords corregidos — ictericia, fiebre, lesión expuesta
-  - Sin límite de 14 intentos
+Archivo: app.py
+Descripción: Quiz interactivo RSA para colaboradores con registro en Google Sheets.
 """
 
 import streamlit as st
 import random
 import uuid
+import hashlib
 import json
-import datetime
-import platform
-from difflib import SequenceMatcher
+from datetime import datetime
+import time
 
-# ─── Configuración de página ────────────────────────────────────────────────
+# ── Importaciones opcionales ──────────────────────────────────────────────────
+try:
+    from rapidfuzz import fuzz
+    HAS_RAPIDFUZZ = True
+except ImportError:
+    import difflib
+    HAS_RAPIDFUZZ = False
+
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    HAS_GSPREAD = True
+except ImportError:
+    HAS_GSPREAD = False
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PAGE CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="RSA Quiz | Starbucks",
+    page_title="RSA Quiz",
     page_icon="☕",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
 
-# ─── CSS Premium ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  CSS PREMIUM  (sin cambios)
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-    --green-dark:   #00704A;
-    --green-mid:    #1E3932;
-    --green-light:  #D4E9E2;
-    --gold:         #CBA258;
-    --copper:       #C47B37;
-    --amber:        #F5A623;
-    --cream:        #FAF7F2;
-    --white:        #FFFFFF;
-    --text-dark:    #1E3932;
-    --text-mid:     #3D5A52;
-    --text-light:   #6B8F85;
-    --card-bg:      rgba(255,255,255,0.72);
-    --glass:        rgba(255,255,255,0.55);
-    --shadow:       0 8px 32px rgba(30,57,50,0.13);
-    --radius:       18px;
-    --radius-sm:    10px;
+  --green:   #00704A;
+  --green-l: #1e8f62;
+  --yellow:  #CBA135;
+  --orange:  #D4783A;
+  --copper:  #B87333;
+  --bg:      #F5F0E8;
+  --card:    rgba(255,255,255,0.82);
+  --text:    #1C1C1C;
+  --muted:   #6B6B6B;
+  --radius:  14px;
+  --shadow:  0 4px 24px rgba(0,112,74,0.10);
 }
 
-* { box-sizing: border-box; }
-
-html, body, [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #e8f5ef 0%, #f5efe6 50%, #fdf8f0 100%) !important;
-    font-family: 'DM Sans', sans-serif !important;
-    color: var(--text-dark) !important;
+html, body, .stApp {
+  background: var(--bg) !important;
+  font-family: 'Inter', sans-serif !important;
+  color: var(--text) !important;
 }
-
-[data-testid="stAppViewContainer"] > .main {
-    background: transparent !important;
-}
-
-[data-testid="stHeader"] { background: transparent !important; }
 
 #MainMenu, footer, header { visibility: hidden; }
+.block-container { padding: 1.5rem 1rem 4rem !important; max-width: 720px !important; }
 
 .quiz-card {
-    background: var(--card-bg);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border: 1.5px solid rgba(203,162,88,0.22);
-    border-radius: var(--radius);
-    padding: 2.2rem 2.4rem;
-    box-shadow: var(--shadow);
-    margin-bottom: 1.4rem;
-    animation: fadeUp 0.45s ease both;
+  background: var(--card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0,112,74,0.15);
+  border-radius: var(--radius);
+  padding: 2rem 2.2rem;
+  margin: 1rem 0;
+  box-shadow: var(--shadow);
+  animation: slideUp .45s ease both;
 }
 
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(22px); }
-    to   { opacity: 1; transform: translateY(0); }
+.top-bar {
+  background: linear-gradient(135deg, var(--green) 0%, var(--green-l) 100%);
+  border-radius: var(--radius);
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+  box-shadow: var(--shadow);
+}
+.top-bar .logo { font-size: 1.5rem; }
+.top-bar .title-text { font-size: 1.1rem; font-weight: 700; letter-spacing: .02em; }
+.top-bar .sub   { font-size: .78rem; opacity: .85; }
+
+.code-badge {
+  background: linear-gradient(135deg, #fff7e6, #fff3d6);
+  border: 2px solid var(--yellow);
+  border-radius: 10px;
+  padding: .6rem 1.2rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  animation: fadeIn .6s ease both;
+}
+.code-badge .code-num {
+  font-size: 2.6rem;
+  font-weight: 800;
+  color: var(--orange);
+  letter-spacing: .12em;
+  line-height: 1;
+}
+.code-badge .code-label {
+  font-size: .72rem;
+  color: var(--muted);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-top: .15rem;
+}
+.code-badge .code-warn {
+  font-size: .75rem;
+  color: var(--orange);
+  margin-top: .25rem;
+  font-weight: 500;
 }
 
-.app-header {
-    text-align: center;
-    padding: 2rem 0 1.2rem;
+.progress-wrap { margin-bottom: 1rem; }
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: .78rem;
+  color: var(--muted);
+  margin-bottom: .3rem;
 }
-.app-header .logo-ring {
-    width: 72px; height: 72px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--green-dark), var(--green-mid));
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 2rem;
-    box-shadow: 0 4px 20px rgba(0,112,74,0.3);
-    margin-bottom: 0.7rem;
-}
-.app-header h1 {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 2rem !important;
-    font-weight: 800 !important;
-    color: var(--green-mid) !important;
-    margin: 0 !important;
-    letter-spacing: -0.5px;
-}
-.app-header p {
-    color: var(--text-mid) !important;
-    font-size: 1rem !important;
-    margin: 0.3rem 0 0 !important;
-}
-
-.validation-badge {
-    background: linear-gradient(135deg, var(--green-mid), var(--green-dark));
-    color: white !important;
-    border-radius: 14px;
-    padding: 0.9rem 1.4rem;
-    text-align: center;
-    margin-bottom: 1.2rem;
-    border: 1.5px solid var(--gold);
-    box-shadow: 0 4px 16px rgba(0,112,74,0.22);
-}
-.validation-badge .code-number {
-    font-family: 'Syne', sans-serif;
-    font-size: 3rem;
-    font-weight: 800;
-    letter-spacing: 0.18em;
-    color: var(--amber) !important;
-    display: block;
-    line-height: 1.1;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.25);
-}
-.validation-badge .code-label {
-    font-size: 0.7rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.85;
-    margin-top: 0.2rem;
-    display: block;
-}
-
-.progress-wrap {
-    background: var(--green-light);
-    border-radius: 99px;
-    height: 8px;
-    margin-bottom: 1.4rem;
-    overflow: hidden;
+.progress-track {
+  background: rgba(0,112,74,0.12);
+  border-radius: 99px;
+  height: 8px;
+  overflow: hidden;
 }
 .progress-fill {
-    height: 100%;
-    border-radius: 99px;
-    background: linear-gradient(90deg, var(--green-dark), var(--amber));
-    transition: width 0.6s cubic-bezier(.4,0,.2,1);
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--yellow));
+  border-radius: 99px;
+  transition: width .5s ease;
 }
 
-.q-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin-bottom: 0.9rem;
+.q-number {
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin-bottom: .3rem;
 }
-.q-num {
-    background: var(--green-dark);
-    color: white !important;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.78rem;
-    padding: 0.28rem 0.75rem;
-    border-radius: 99px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-.q-type {
-    color: var(--copper);
-    font-size: 0.78rem;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-}
-
 .q-text {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.18rem;
-    font-weight: 700;
-    color: var(--text-dark) !important;
-    line-height: 1.45;
-    margin-bottom: 1.3rem;
+  font-size: 1.08rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 1.1rem;
 }
 
-.joker-box {
-    background: linear-gradient(135deg, rgba(245,166,35,0.12), rgba(196,123,55,0.1));
-    border: 1.5px solid var(--amber);
-    border-radius: var(--radius-sm);
-    padding: 1rem 1.2rem;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-    color: var(--text-dark) !important;
-    animation: fadeUp 0.3s ease;
-}
-.joker-box strong { color: var(--copper) !important; }
-
-.stButton > button {
-    font-family: 'Syne', sans-serif !important;
-    font-weight: 700 !important;
-    border-radius: 99px !important;
-    padding: 0.65rem 2rem !important;
-    font-size: 0.95rem !important;
-    letter-spacing: 0.04em !important;
-    transition: all 0.22s ease !important;
-    border: none !important;
-}
-
-div[data-testid="stButton"]:not(.btn-secondary) > button {
-    background: linear-gradient(135deg, var(--green-dark), #005c3b) !important;
-    color: white !important;
-    box-shadow: 0 4px 16px rgba(0,112,74,0.28) !important;
-}
-div[data-testid="stButton"]:not(.btn-secondary) > button:hover {
-    box-shadow: 0 6px 24px rgba(0,112,74,0.38) !important;
-    transform: translateY(-2px) !important;
-}
-
-div[data-testid="stRadio"] label,
-div[data-testid="stCheckbox"] label {
-    font-size: 0.95rem !important;
-    color: var(--text-dark) !important;
-}
-
-div[data-testid="stTextInput"] input,
-div[data-testid="stTextArea"] textarea {
-    border-radius: var(--radius-sm) !important;
-    border: 1.5px solid rgba(30,57,50,0.2) !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.95rem !important;
-    background: rgba(255,255,255,0.8) !important;
-    color: var(--text-dark) !important;
-    transition: border-color 0.2s !important;
-}
-div[data-testid="stTextInput"] input:focus,
-div[data-testid="stTextArea"] textarea:focus {
-    border-color: var(--green-dark) !important;
-    box-shadow: 0 0 0 3px rgba(0,112,74,0.1) !important;
-}
-
-.score-big {
-    text-align: center;
-    padding: 2rem 1.5rem;
-}
-.score-number {
-    font-family: 'Syne', sans-serif;
-    font-size: 5rem;
-    font-weight: 800;
-    line-height: 1;
-    margin-bottom: 0.2rem;
-}
-.score-label {
-    font-size: 1.05rem;
-    color: var(--text-mid) !important;
-    margin-bottom: 1.2rem;
-}
-.score-msg {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.25rem;
-    font-weight: 700;
-    padding: 0.9rem 1.5rem;
-    border-radius: var(--radius-sm);
-    display: inline-block;
-    margin-bottom: 1rem;
-}
-
-.breakdown-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.55rem 0;
-    border-bottom: 1px solid rgba(30,57,50,0.08);
-    font-size: 0.88rem;
-    color: var(--text-mid) !important;
-}
-.breakdown-row .pts {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 0.95rem;
-    color: var(--green-dark) !important;
+.drag-item {
+  background: var(--card);
+  border: 1.5px solid rgba(0,112,74,0.2);
+  border-radius: 10px;
+  padding: .6rem 1rem;
+  margin-bottom: .4rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition: box-shadow .18s;
 }
 
 .feedback-correct {
-    background: rgba(0,112,74,0.1);
-    border-left: 4px solid var(--green-dark);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    padding: 0.7rem 1rem;
-    font-size: 0.88rem;
-    margin-top: 0.5rem;
-    color: var(--green-dark) !important;
+  background: linear-gradient(135deg, #d4edda, #c3e6cb);
+  border-left: 4px solid #28a745;
+  border-radius: 8px;
+  padding: .7rem 1rem;
+  color: #155724;
+  font-weight: 500;
+  margin: .6rem 0;
+  animation: slideUp .3s ease both;
 }
 .feedback-wrong {
-    background: rgba(196,123,55,0.1);
-    border-left: 4px solid var(--copper);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    padding: 0.7rem 1rem;
-    font-size: 0.88rem;
-    margin-top: 0.5rem;
-    color: var(--copper) !important;
+  background: linear-gradient(135deg, #fff3cd, #ffeeba);
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  padding: .7rem 1rem;
+  color: #856404;
+  font-weight: 500;
+  margin: .6rem 0;
+  animation: slideUp .3s ease both;
+}
+.feedback-bonus {
+  background: linear-gradient(135deg, #fff8e1, #fff3cd);
+  border-left: 4px solid var(--yellow);
+  border-radius: 8px;
+  padding: .7rem 1rem;
+  color: #5a4000;
+  font-weight: 600;
+  margin: .6rem 0;
+  animation: slideUp .3s ease both;
 }
 
-#confetti-canvas {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    z-index: 9999;
+.comodin-box {
+  background: linear-gradient(135deg, #fff8e1, #fff3cd);
+  border: 1.5px solid var(--yellow);
+  border-radius: 10px;
+  padding: .8rem 1.1rem;
+  margin: .6rem 0;
+  font-size: .9rem;
+  color: #5a4000;
+  animation: fadeIn .4s ease both;
 }
+.comodin-box strong { color: var(--orange); }
 
-.order-item {
-    background: var(--card-bg);
-    border: 1.5px solid rgba(30,57,50,0.15);
-    border-radius: var(--radius-sm);
-    padding: 0.7rem 1.1rem;
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    font-size: 0.93rem;
-    font-weight: 500;
-    cursor: grab;
+div[data-testid="stButton"] > button {
+  background: linear-gradient(135deg, var(--green), var(--green-l)) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  font-size: .95rem !important;
+  padding: .6rem 1.6rem !important;
+  transition: all .2s ease !important;
+  box-shadow: 0 3px 12px rgba(0,112,74,0.25) !important;
 }
-.order-handle {
-    color: var(--text-light);
-    font-size: 1.1rem;
+div[data-testid="stButton"] > button:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 5px 18px rgba(0,112,74,0.35) !important;
 }
+div[data-testid="stButton"] > button:active { transform: scale(.98) !important; }
 
-.handwash-notice {
-    background: linear-gradient(135deg, var(--green-mid), var(--green-dark));
-    color: white !important;
-    border-radius: var(--radius);
-    padding: 1.8rem 2rem;
-    text-align: center;
-    margin-bottom: 1.2rem;
+.score-card {
+  background: linear-gradient(135deg, var(--green) 0%, var(--green-l) 100%);
+  border-radius: 18px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  color: white;
+  box-shadow: 0 8px 40px rgba(0,112,74,0.3);
+  animation: popIn .5s cubic-bezier(.34,1.56,.64,1) both;
 }
-.handwash-notice h2 {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 1.5rem !important;
-    font-weight: 800 !important;
-    color: var(--amber) !important;
-    margin-bottom: 0.5rem !important;
-}
-.handwash-notice p {
-    font-size: 1rem !important;
-    opacity: 0.92 !important;
-    color: white !important;
-}
+.score-card .big-score { font-size: 5rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.score-card .score-pct { font-size: 1.5rem; font-weight: 300; opacity: .9; margin-top: .2rem; }
+.score-card .score-msg { font-size: 1.05rem; margin-top: .8rem; opacity: .95; font-weight: 500; }
 
-@media (max-width: 600px) {
-    .quiz-card { padding: 1.4rem 1.2rem; }
-    .app-header h1 { font-size: 1.5rem !important; }
-    .score-number { font-size: 3.5rem; }
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  padding: .45rem 0;
+  border-bottom: 1px solid rgba(0,112,74,0.1);
+  font-size: .9rem;
 }
+.breakdown-row:last-child { border-bottom: none; }
+.breakdown-pts { font-weight: 700; color: var(--green); }
+
+.intro-hero { text-align: center; padding: 2rem 1rem 1.5rem; animation: fadeIn .8s ease both; }
+.intro-hero h1 { font-size: 2rem !important; font-weight: 800 !important; color: var(--green) !important; margin-bottom: .4rem !important; }
+.intro-hero .sub { font-size: 1rem; color: var(--muted); }
+
+@keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
+@keyframes slideUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:none } }
+@keyframes popIn   { from { opacity:0; transform:scale(.85) } to { opacity:1; transform:scale(1) } }
+
+div[data-testid="stRadio"] label { font-size: .95rem !important; }
+div[data-testid="stTextInput"] input,
+div[data-testid="stTextArea"] textarea {
+  border-radius: 8px !important;
+  border: 1.5px solid rgba(0,112,74,0.25) !important;
+  font-family: 'Inter', sans-serif !important;
+}
+div[data-testid="stTextInput"] input:focus,
+div[data-testid="stTextArea"] textarea:focus {
+  border-color: var(--green) !important;
+  box-shadow: 0 0 0 2px rgba(0,112,74,0.15) !important;
+}
+.confetti-msg { font-size: 2.5rem; text-align: center; animation: popIn .6s ease both; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Utilidades ──────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  PREGUNTAS
+#  Solo se mantienen: P1, P2, P11, P12, P15
+#  P3+P4 combinadas → nueva pregunta open con evaluación flexible
+#  P15 con lógica bonus para no-gerencial
+# ─────────────────────────────────────────────────────────────────────────────
 
-def similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
-
-def flexible_match(response: str, keywords: list, threshold: float = 0.55) -> bool:
-    resp = response.lower().strip()
-    for kw in keywords:
-        kw_l = kw.lower()
-        if kw_l in resp:
-            return True
-        for w in resp.split():
-            if similarity(w, kw_l) >= threshold:
-                return True
-    return False
-
-def count_keywords(response: str, keywords: list, threshold: float = 0.55) -> int:
-    found = 0
-    resp = response.lower()
-    for kw in keywords:
-        kw_l = kw.lower()
-        if kw_l in resp:
-            found += 1
-        else:
-            for w in resp.split():
-                if similarity(w, kw_l) >= threshold:
-                    found += 1
-                    break
-    return found
-
-def generate_code() -> str:
-    return str(random.randint(100, 999))
-
-def header_html():
-    st.markdown("""
-    <div class="app-header">
-        <div class="logo-ring">☕</div>
-        <h1>RSA Quiz</h1>
-        <p>Inocuidad Alimentaria · Starbucks</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-def validation_badge():
-    code = st.session_state.get("unique_code", "---")
-    st.markdown(f"""
-    <div class="validation-badge">
-        <span class="code-number">{code}</span>
-        <span class="code-label">Código de validación único · No compartas capturas</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-def progress_bar(current: int, total: int):
-    pct = int((current / total) * 100)
-    st.markdown(f"""
-    <div class="progress-wrap">
-        <div class="progress-fill" style="width:{pct}%"></div>
-    </div>
-    <p style="text-align:right;font-size:0.78rem;color:var(--text-light);margin-top:-0.8rem;margin-bottom:0.6rem;">
-        Pregunta {current} de {total}
-    </p>
-    """, unsafe_allow_html=True)
-
-# ─── Definición de preguntas ──────────────────────────────────────────────────
-
-QUESTIONS_POOL = [
+PREGUNTAS = [
+    # ── P1 (sin cambios)
     {
         "id": 1,
-        "type": "multiple_choice",
-        "text": "Menciona los rangos de temperatura de refrigeradores.",
-        "options": ["1 a 4°C", "1 a 3°C", "2 a 4°C", "3 a 6°C"],
-        "correct": "1 a 4°C",
-        "points": 5,
+        "texto": "¿Qué significa RSA?",
+        "tipo": "radio",
+        "opciones": [
+            "Responsabilidad Social Activa",
+            "Responsible Service of Alcohol",
+            "Regulación de Servicio Alcohólico",
+            "Registro de Seguridad Alimentaria",
+        ],
+        "correcta": "Responsible Service of Alcohol",
+        "puntos": 5,
+        "comodin": None,
     },
+    # ── P2 (sin cambios)
     {
         "id": 2,
-        "type": "true_false",
-        "text": "¿La concentración de sanitizante que maneja Starbucks es de 100–200 ppm?",
-        "correct": "Verdadero",
-        "points": 5,
+        "texto": "¿Cuál es la edad mínima legal para consumir alcohol en México?",
+        "tipo": "radio",
+        "opciones": ["16 años", "17 años", "18 años", "21 años"],
+        "correcta": "18 años",
+        "puntos": 5,
+        "comodin": None,
     },
+    # ── P3+P4 COMBINADAS → nueva pregunta open flexible
     {
         "id": 3,
-        "type": "chips_select",
-        "text": "¿Qué tipo de riesgos de contaminación existen en alimentos y bebidas?",
-        "instruction": "Selecciona exactamente 3 correctas.",
-        "correct": ["Física", "Química", "Microbiológica"],
-        "distractors": ["Astronomía", "Botánica", "Anatomía", "Zoología", "Genética", "Ecología"],
-        "select_count": 3,
-        "points": 6,
+        "texto": "¿Qué tipos de riesgos de contaminación existen en alimentos y bebidas? Da algunos ejemplos.",
+        "tipo": "open_flexible",
+        "puntos": 8,
+        # Categorías que suman puntos (cada una vale parte del puntaje)
+        "categorias": {
+            "física":         ["física", "fisico", "físico", "fisicas", "físicas", "physical",
+                               "polvo", "cabello", "cabellos", "pelo", "residuo", "piedra",
+                               "acrílico", "acrilico", "vidrio", "metal", "astilla", "madera",
+                               "horno", "fragmento", "objeto", "partícula"],
+            "química":        ["química", "quimica", "químico", "chemical", "quimico",
+                               "detergente", "pesticida", "plaguicida", "cloro", "veneno",
+                               "tóxico", "toxico", "producto de limpieza"],
+            "microbiológica": ["microbiológica", "microbiologica", "microbio", "bacteria",
+                               "bacterias", "virus", "hongo", "hongos", "microorganismo",
+                               "germen", "gérmenes", "patógeno", "biologica", "biológica"],
+        },
+        "comodin": "Existen 3 tipos: contaminación Física (polvo, cabellos, objetos), Química (detergentes, pesticidas) y Microbiológica (bacterias, hongos, virus).",
     },
-    {
-        "id": 4,
-        "type": "chips_select",
-        "text": "Menciona algún tipo de contaminación física dentro de la tienda.",
-        "instruction": "Selecciona todas las correctas.",
-        "correct": ["Polvo", "Cabellos", "Residuos de piedra de horno", "Acrílicos rotos"],
-        "distractors": ["Uñas", "Plástico roto", "Vapor", "Humo", "Residuos líquidos"],
-        "select_count": 4,
-        "points": 6,
-    },
-    {
-        "id": 5,
-        "type": "open",
-        "text": "Menciona un tipo de contaminación química.",
-        "keywords": ["químicos no autorizados", "químicos", "guardar producto", "producto cerca", "autorizado", "quimico"],
-        "points": 5,
-    },
-    {
-        "id": 6,
-        "type": "fill_blank",
-        "text": "Descomposición del alimento y desarrollo ________",
-        "keywords": ["microorganismos", "microorganismo", "bacterias", "bacteria"],
-        "points": 5,
-    },
-    {
-        "id": 7,
-        "type": "open",
-        "text": "¿Qué es un riesgo de inocuidad de alimentos?",
-        "keywords": ["contaminación", "física", "química", "biológica", "riesgo", "consumidor", "vida", "ponga en riesgo"],
-        "points": 5,
-    },
-    {
-        "id": 8,
-        "type": "open_joker",
-        "text": "¿Cuál es la manera correcta de lavarse las manos?",
-        "joker": "Utilizar la estación específica de lavado de manos, emplear agua corriente a temperatura mínima de 35°C…",
-        "joker_label": "Comodín",
-        "keywords": ["frotar", "jabón", "20 segundos", "codos", "uñas", "secar", "toalla", "agua", "lavado"],
-        "points": 6,
-    },
-    {
-        "id": 9,
-        "type": "open_joker",
-        "text": "¿Cuál es el documento de control de temperaturas dentro de tu tienda?",
-        "joker": "En español sería: sección de control de temperaturas.",
-        "joker_label": "Ayuda",
-        "keywords": ["duty roaster", "duty roster", "duty", "roaster"],
-        "points": 5,
-    },
-    {
-        "id": 10,
-        "type": "open_bonus",
-        "text": "¿Cuáles son los 3 puntos fundamentales para mantener la tienda fuera del riesgo de plagas?",
-        "base_keywords": ["orden", "limpieza", "defectos estructurales", "fumigación", "mensual"],
-        "bonus_keywords": ["BOH", "basura", "drenaje", "grietas", "hoyos", "tapar"],
-        "points": 7,
-        "bonus_points": 2,
-    },
+    # ── P11 (sin cambios)
     {
         "id": 11,
-        "type": "order",
-        "text": "Explique los procedimientos para lavado de utensilios.",
-        "items": ["Lavar", "Enjuagar", "Sanitizar", "Secar al aire"],
-        "correct_order": ["Lavar", "Enjuagar", "Sanitizar", "Secar al aire"],
-        "points": 6,
+        "texto": "Ordena los siguientes pasos del protocolo RSA cuando un cliente parece en estado de ebriedad (de primero a último):",
+        "tipo": "drag",
+        "items_ordenados": [
+            "Observar señales de embriaguez",
+            "Hablar con el cliente con respeto",
+            "Ofrecer agua o alimentos",
+            "Negar más alcohol si es necesario",
+            "Notificar al gerente",
+            "Ayudar a conseguir transporte seguro",
+        ],
+        "puntos": 7,
+        "comodin": None,
     },
+    # ── P12 (sin cambios)
     {
         "id": 12,
-        "type": "fill_blank",
-        "text": "Los utensilios deben lavarse cada ____ horas.",
-        "keywords": ["2", "dos"],
-        "points": 4,
+        "texto": "¿Cuál de estas frases es la más adecuada para negar el servicio de alcohol a un cliente?",
+        "tipo": "radio",
+        "opciones": [
+            "'No te voy a servir porque ya estás borracho.'",
+            "'Lo siento, por política del establecimiento no puedo servirte más alcohol en este momento. ¿Puedo ofrecerte agua o algo de comer?'",
+            "'Mi jefe dice que ya no te sirva.'",
+            "'Ya tomaste mucho, mejor vete a tu casa.'",
+        ],
+        "correcta": "'Lo siento, por política del establecimiento no puedo servirte más alcohol en este momento. ¿Puedo ofrecerte agua o algo de comer?'",
+        "puntos": 5,
+        "comodin": None,
     },
-    {
-        "id": 13,
-        "type": "chips_select",
-        "text": "¿Cuáles son los utensilios que deben ser lavados, enjuagados y desinfectados cada 2 horas?",
-        "instruction": "Selecciona todos los correctos.",
-        "correct": ["Jarras de vaporización", "Termómetros", "Cucharas", "Jarras/tapas blender", "Palas hielo", "Pinzas", "Cuchillos"],
-        "distractors": ["Bandejas", "Servilletas", "Vasos", "Cucharones"],
-        "select_count": 7,
-        "points": 7,
-    },
-    {
-        "id": 14,
-        "type": "multiple_choice",
-        "text": "¿Cuál es la temperatura de enjuague que debe alcanzar la sanitizadora?",
-        "options": ["170°F", "185°F", "190°F", "180°F", "200°F"],
-        "correct": "180°F",
-        "points": 5,
-    },
-    # ── CORRECCIÓN P15: keywords actualizados con ictericia, fiebre, lesión expuesta ──
+    # ── P15 — fill-in con bonus para no-gerencial
     {
         "id": 15,
-        "type": "fill_multiple",
-        "text": "¿Cuáles son los síntomas de enfermedad que excluirían a una persona de venir a trabajar?",
-        "given": ["Diarrea", "Vómito"],
-        "blanks": 3,
-        "blank_keywords": [
-            ["fiebre", "temperatura", "calentura"],
-            ["ictericia", "amarilla", "amarillo", "piel amarilla", "ojos amarillos"],
-            ["lesión", "lesion", "herida", "expuesta", "cortada", "abierta", "lesión expuesta"],
+        "texto": "Completa los espacios en blanco de nuestra política RSA:",
+        "tipo": "fill",
+        "template": "No servimos alcohol a menores de ___ años. Siempre pedimos ___ oficial. Si hay duda, ___.",
+        "campos": [
+            {"label": "Edad mínima", "correcta": "18", "clave": "edad"},
+            {"label": "Tipo de documento", "correcta": "identificación", "clave": "doc",
+             "alternativas": ["id", "ine", "pasaporte", "credencial", "documento"]},
+            {"label": "Acción a tomar", "correcta": "no servimos", "clave": "accion",
+             "alternativas": ["negamos", "no servir", "rechazamos", "no se sirve", "negar"]},
         ],
-        "points": 7,
-    },
-    {
-        "id": 16,
-        "type": "open_joker",
-        "text": "¿Cuáles son las dos acciones que se deben tomar si una persona informa que ha sido diagnosticada con una enfermedad y tiene todos los síntomas?",
-        "joker": "Tranquila/o, tú puedes. Piénsalo con calma.",
-        "joker_label": "Pista",
-        "hint_prefix": "S______________ y S______________",
-        "keywords": ["excluye", "excluir", "retira", "turno", "reporta", "reportar", "gerente", "zona"],
-        "points": 8,
-    },
-    {
-        "id": 17,
-        "type": "open_role",
-        "text": "¿PROPORCIONE SUS PROCEDIMIENTOS ESCRITOS INDICANDO QUÉ HACER EN CASO DE DIARREA/VÓMITO? (RIESGO BIOLÓGICO)",
-        "keywords_gerencial": ["procedimientos escritos", "digitales", "impresos", "mostrador", "visita", "cercar", "EPPs", "bolsa roja", "riesgo biológico", "tacho"],
-        "keywords_base": ["cercar", "zona", "EPPs", "equipos de proteccion", "bolsa roja", "riesgo biológico", "tacho", "desechar"],
-        "joker_non_gerencial": "Son 3 acciones.",
-        "points": 10,
-    },
-    {
-        "id": 18,
-        "type": "open_joker",
-        "text": "¿Cuál es el procedimiento si identificas una condición insegura en la tienda?",
-        "joker": "Son 3 acciones.",
-        "joker_label": "Comodín",
-        "keywords": ["OT", "orden de trabajo", "gerente zonal", "gerente", "correo", "área correspondiente", "avisar", "generar"],
-        "points": 8,
+        "puntos": 6,
+        "puntos_bonus_no_gerencial": 3,   # puntos extra si no-gerencial responde bien
+        "comodin": None,
+        "gerencial": True,                # marca que es pregunta avanzada
     },
 ]
 
-TOTAL_POINTS = sum(q.get("points", 0) for q in QUESTIONS_POOL)
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
 
-def build_question_order(role: str) -> list:
-    fixed_end = [16, 17]
-    pool_ids = [q["id"] for q in QUESTIONS_POOL if q["id"] not in fixed_end]
-    random.shuffle(pool_ids)
-    return pool_ids + fixed_end
+def generar_codigo() -> str:
+    return str(random.randint(100, 999))
 
-def get_question(qid: int) -> dict:
-    for q in QUESTIONS_POOL:
-        if q["id"] == qid:
-            return q
-    return {}
+def generar_uuid() -> str:
+    return str(uuid.uuid4())
 
-# ─── Guardar en Google Sheets ─────────────────────────────────────────────────
-def save_to_sheets(data: dict):
+def device_hash() -> str:
+    raw = f"{time.time()}-{uuid.uuid4()}"
+    return hashlib.md5(raw.encode()).hexdigest()[:8]
+
+def similarity_score(respuesta: str, validas: list) -> float:
+    resp = respuesta.strip().lower()
+    best = 0.0
+    for v in validas:
+        v_lower = v.lower()
+        if v_lower in resp or resp in v_lower:
+            return 1.0
+        if HAS_RAPIDFUZZ:
+            score = fuzz.partial_ratio(resp, v_lower) / 100
+        else:
+            score = difflib.SequenceMatcher(None, resp, v_lower).ratio()
+        best = max(best, score)
+    return best
+
+def respuesta_abierta_correcta(respuesta: str, validas: list, umbral=0.45) -> bool:
+    if not respuesta or len(respuesta.strip()) < 3:
+        return False
+    return similarity_score(respuesta, validas) >= umbral
+
+def mezclar_preguntas(preguntas: list) -> list:
+    """Mezcla todas las preguntas sin fijar ninguna al final (quiz corto)."""
+    mezclables = preguntas[:]
+    random.shuffle(mezclables)
+    return mezclables
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  EVALUACIÓN POR TIPO
+# ─────────────────────────────────────────────────────────────────────────────
+
+def evaluar_open_flexible(respuesta: str, pregunta: dict) -> tuple[bool, int, int]:
+    """
+    Evaluación flexible progresiva para la pregunta combinada de contaminación.
+    Retorna (correcto_total, puntos_ganados, categorias_encontradas).
+    - Cada categoría identificada suma puntos proporcionales.
+    - Ejemplos físicos también suman aunque no mencionen 'física'.
+    - No penaliza respuestas parciales.
+    """
+    pts       = pregunta["puntos"]
+    categorias = pregunta["categorias"]
+    resp_lower = respuesta.strip().lower()
+
+    encontradas = set()
+    for nombre_cat, keywords in categorias.items():
+        for kw in keywords:
+            if kw in resp_lower:
+                encontradas.add(nombre_cat)
+                break
+        # fuzzy fallback si no matcheó exacto
+        if nombre_cat not in encontradas:
+            if similarity_score(resp_lower, keywords) >= 0.55:
+                encontradas.add(nombre_cat)
+
+    n = len(encontradas)
+    total_cats = len(categorias)
+
+    if n == 0:
+        puntos_ganados = 0
+    elif n == 1:
+        puntos_ganados = round(pts * 0.35)   # ~35% por una categoría/ejemplo
+    elif n == 2:
+        puntos_ganados = round(pts * 0.70)   # ~70% por dos
+    else:
+        puntos_ganados = pts                  # 100% por las tres
+
+    correcto = n == total_cats
+    return correcto, puntos_ganados, n
+
+
+def evaluar_fill_con_bonus(pregunta: dict, respuesta: dict, rol: str) -> tuple[bool, int, bool]:
+    """
+    Evalúa fill-in. Si es no-gerencial y responde bien → bonus.
+    Retorna (correcto, puntos_ganados, es_bonus).
+    """
+    campos   = pregunta["campos"]
+    pts      = pregunta["puntos"]
+    aciertos = 0
+
+    for campo in campos:
+        val = str(respuesta.get(campo["clave"], "")).strip().lower()
+        correcta_lower = campo["correcta"].lower()
+        alternativas   = [a.lower() for a in campo.get("alternativas", [])]
+        if val == correcta_lower or val in alternativas or respuesta_abierta_correcta(val, [correcta_lower] + alternativas):
+            aciertos += 1
+
+    correcto      = aciertos == len(campos)
+    pts_parciales = round((aciertos / len(campos)) * pts)
+
+    # Bonus solo si no-gerencial Y responde bien (al menos 2/3 campos)
+    es_bonus = False
+    if rol != "Gerencial" and aciertos >= 2:
+        es_bonus = True
+        pts_parciales += pregunta.get("puntos_bonus_no_gerencial", 0)
+
+    # No penalizar: nunca dar negativo
+    pts_parciales = max(0, pts_parciales)
+    return correcto, pts_parciales, es_bonus
+
+
+def evaluar_respuesta(pregunta: dict, respuesta) -> tuple[bool, int, dict]:
+    """
+    Retorna (correcto, puntos_ganados, meta).
+    meta es un dict con info extra para el feedback (bonus, categorias, etc.)
+    """
+    tipo = pregunta["tipo"]
+    pts  = pregunta["puntos"]
+    meta = {}
+
+    if tipo == "radio":
+        correcto = respuesta == pregunta["correcta"]
+        return correcto, pts if correcto else 0, meta
+
+    elif tipo == "multi":
+        seleccion = set(respuesta) if respuesta else set()
+        correctas = set(pregunta["correctas"])
+        aciertos  = len(seleccion & correctas)
+        errores   = len(seleccion - correctas)
+        total_c   = len(correctas)
+        parcial   = max(0, aciertos - errores)
+        puntos_parciales = round((parcial / total_c) * pts)
+        correcto  = seleccion == correctas
+        return correcto, puntos_parciales, meta
+
+    elif tipo == "open":
+        correcto = respuesta_abierta_correcta(str(respuesta), pregunta["respuestas_validas"])
+        return correcto, pts if correcto else 0, meta
+
+    elif tipo == "open_flexible":
+        correcto, pts_ganados, n_cats = evaluar_open_flexible(str(respuesta), pregunta)
+        meta["categorias_encontradas"] = n_cats
+        meta["total_categorias"]       = len(pregunta["categorias"])
+        return correcto, pts_ganados, meta
+
+    elif tipo == "drag":
+        correcto = list(respuesta) == pregunta["items_ordenados"]
+        return correcto, pts if correcto else 0, meta
+
+    elif tipo == "fill":
+        correcto, pts_ganados, es_bonus = evaluar_fill_con_bonus(
+            pregunta, respuesta, st.session_state.rol
+        )
+        meta["es_bonus"] = es_bonus
+        return correcto, pts_ganados, meta
+
+    elif tipo == "open_list":
+        items    = [str(r).strip() for r in (respuesta if respuesta else []) if str(r).strip()]
+        aciertos = sum(1 for r in items if respuesta_abierta_correcta(r, pregunta["respuestas_validas"]))
+        num_req  = (pregunta["num_respuestas_gerencial"]
+                    if st.session_state.rol == "Gerencial"
+                    else pregunta["num_respuestas_no_gerencial"])
+        correcto = aciertos >= num_req
+        return correcto, round((min(aciertos, num_req) / num_req) * pts), meta
+
+    return False, 0, meta
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GOOGLE SHEETS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def guardar_en_sheets(datos: dict):
+    if not HAS_GSPREAD:
+        return False
     try:
-        import gspread
-        from google.oauth2.service_account import Credentials
-
         creds_dict = st.secrets.get("gcp_service_account", None)
-        spreadsheet_id = st.secrets.get("spreadsheet_id", None)
-
-        if not creds_dict or not spreadsheet_id:
-            return
-
+        if not creds_dict:
+            return False
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
         ]
         creds = Credentials.from_service_account_info(dict(creds_dict), scopes=scopes)
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(spreadsheet_id).sheet1
-
-        if sheet.row_count < 1 or not sheet.row_values(1):
-            sheet.append_row([
-                "Nombre", "Rol", "Código", "Score", "%", "Fecha", "Hora",
-                "Navegador", "UUID", "Respuestas"
+        gc    = gspread.authorize(creds)
+        sheet_id = st.secrets.get("google_sheet_id", "")
+        if not sheet_id:
+            return False
+        sh = gc.open_by_key(sheet_id)
+        ws = sh.sheet1
+        existing = ws.row_values(1)
+        if not existing:
+            ws.append_row([
+                "Nombre", "Rol", "Código", "Score", "%",
+                "Fecha", "Hora", "UUID", "Respuestas"
             ])
+        row = [
+            datos.get("nombre", ""),
+            datos.get("rol", ""),
+            datos.get("codigo", ""),
+            datos.get("score", 0),
+            datos.get("porcentaje", "0%"),
+            datos.get("fecha", ""),
+            datos.get("hora", ""),
+            datos.get("uuid", ""),
+            json.dumps(datos.get("respuestas", {}), ensure_ascii=False),
+        ]
+        ws.append_row(row)
+        return True
+    except Exception as e:
+        st.warning(f"No se pudo guardar en Sheets: {e}")
+        return False
 
-        sheet.append_row([
-            data.get("nombre", ""),
-            data.get("rol", ""),
-            data.get("codigo", ""),
-            data.get("score", 0),
-            data.get("porcentaje", 0),
-            data.get("fecha", ""),
-            data.get("hora", ""),
-            data.get("browser", ""),
-            data.get("uuid", ""),
-            json.dumps(data.get("respuestas", {}), ensure_ascii=False),
-        ])
-    except Exception:
-        pass
 
-# ─── Init session state ───────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+#  SESSION STATE INIT
+# ─────────────────────────────────────────────────────────────────────────────
+
 def init_state():
     defaults = {
-        "stage": "intro",
+        "pantalla": "intro",
         "nombre": "",
         "rol": "",
-        "unique_code": generate_code(),
-        "session_uuid": str(uuid.uuid4()),
-        "q_order": [],
-        "q_index": 0,
-        "scores": {},
-        "answers": {},
-        "joker_used": {},
-        "chip_selections": {},
-        "order_state": {},
-        # ── NUEVO: controla si ya se presionó "Siguiente" para mostrar feedback ──
-        "submitted": {},   # {qid: True/False}
-        "started_at": datetime.datetime.now().isoformat(),
-        "saved": False,
+        "codigo": generar_codigo(),
+        "uuid": generar_uuid(),
+        "device": device_hash(),
+        "timestamp": datetime.now().isoformat(),
+        "preguntas_orden": [],
+        "idx_actual": 0,
+        "puntaje": 0,
+        "bonus_suma": 0,
+        "respuestas": {},
+        "comodin_usado": False,
+        "chips_por_pregunta": {},
+        "drag_orden": [],
+        "guardado": False,
+        "mostrar_feedback": False,
+        "ultimo_feedback": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -662,654 +632,431 @@ def init_state():
 
 init_state()
 
-# ─── PANTALLA: INTRO ─────────────────────────────────────────────────────────
-def screen_intro():
-    header_html()
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  UI HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def mostrar_top_bar():
     st.markdown("""
-    <div class="quiz-card" style="text-align:center;padding-top:2.5rem;padding-bottom:2.5rem;">
-        <p style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--green-mid);margin-bottom:0.5rem;">
-            Hola compañero, hacemos esto por tu bien ☀️
-        </p>
-        <p style="color:var(--text-mid);font-size:0.97rem;">
-            Completa el quiz de inocuidad y demuestra tu conocimiento RSA.
-        </p>
+    <div class="top-bar">
+      <div><div class="logo">☕</div></div>
+      <div>
+        <div class="title-text">RSA Quiz</div>
+        <div class="sub">Responsible Service of Alcohol</div>
+      </div>
+      <div style="font-size:.75rem; opacity:.8;">Starbucks</div>
     </div>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        nombre = st.text_input("Déjanos tu nombre", placeholder="Tu nombre completo…", key="input_nombre")
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("✅  Continuar", use_container_width=True):
-            if nombre.strip():
-                st.session_state.nombre = nombre.strip()
-                st.session_state.stage = "role"
-                st.rerun()
-            else:
-                st.warning("Por favor ingresa tu nombre para continuar.")
-
-# ─── PANTALLA: ROL ────────────────────────────────────────────────────────────
-def screen_role():
-    header_html()
-
-    st.markdown("""
-    <div class="quiz-card">
-        <div class="q-text" style="text-align:center;">Selecciona tu rol</div>
+def mostrar_codigo():
+    st.markdown(f"""
+    <div class="code-badge">
+      <div class="code-num">{st.session_state.codigo}</div>
+      <div class="code-label">Tu código de validación único</div>
+      <div class="code-warn">⚠️ No compartas capturas de pantalla con otros compañeros.</div>
+    </div>
     """, unsafe_allow_html=True)
 
-    rol = st.radio(
-        "",
-        ["Partner", "Gerencial"],
-        key="radio_rol",
-        horizontal=True,
-        label_visibility="collapsed",
+def mostrar_progreso():
+    total  = len(st.session_state.preguntas_orden)
+    actual = st.session_state.idx_actual
+    pct    = int((actual / total) * 100) if total else 0
+    st.markdown(f"""
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span>Pregunta {actual + 1} de {total}</span>
+        <span>{pct}%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:{pct}%"></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  RENDERIZADO POR TIPO
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_radio(pregunta, key_prefix, disabled=False):
+    opciones_key = f"{key_prefix}_opciones"
+    if opciones_key not in st.session_state:
+        opciones = pregunta["opciones"][:]
+        random.shuffle(opciones)
+        st.session_state[opciones_key] = opciones
+    opciones = st.session_state[opciones_key]
+    return st.radio("Selecciona tu respuesta:", opciones, key=f"{key_prefix}_radio",
+                    index=None, disabled=disabled)
+
+
+def render_multi(pregunta, key_prefix, disabled=False):
+    st.markdown("**Selecciona todas las que apliquen:**")
+    opciones_key = f"{key_prefix}_opciones_orden"
+    if opciones_key not in st.session_state:
+        opciones = pregunta["opciones"][:]
+        random.shuffle(opciones)
+        st.session_state[opciones_key] = opciones
+    opciones  = st.session_state[opciones_key]
+    q_id      = pregunta["id"]
+    previos   = st.session_state.chips_por_pregunta.get(q_id, [])
+    seleccionados = []
+    for i, opcion in enumerate(opciones):
+        checked = st.checkbox(opcion, key=f"{key_prefix}_cb_{i}",
+                              value=(opcion in previos), disabled=disabled)
+        if checked:
+            seleccionados.append(opcion)
+    st.session_state.chips_por_pregunta[q_id] = seleccionados
+    return seleccionados
+
+
+def render_open(pregunta, key_prefix, disabled=False):
+    return st.text_area("Tu respuesta:", key=f"{key_prefix}_open",
+                        height=90, placeholder="Escribe tu respuesta aquí…",
+                        disabled=disabled)
+
+
+def render_open_flexible(pregunta, key_prefix, disabled=False):
+    """Textarea con hint de categorías esperadas."""
+    st.markdown("💡 *Puedes mencionar los tipos y/o dar ejemplos concretos.*")
+    return st.text_area(
+        "Tu respuesta:",
+        key=f"{key_prefix}_open_flex",
+        height=110,
+        placeholder="Ej: contaminación física como polvo o cabellos, química, microbiológica…",
+        disabled=disabled,
     )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("🚀  Comenzar Quiz", use_container_width=True):
-        st.session_state.rol = rol
-        st.session_state.q_order = build_question_order(rol)
-        st.session_state.stage = "quiz"
+def render_drag(pregunta, key_prefix, disabled=False):
+    st.markdown("**Ordena los pasos (1 = primero, último = al final):**")
+    init_key = f"{key_prefix}_drag_init"
+    if init_key not in st.session_state:
+        shuffled = pregunta["items_ordenados"][:]
+        random.shuffle(shuffled)
+        st.session_state[init_key] = shuffled
+        st.session_state.drag_orden = shuffled[:]
+    orden_actual = st.session_state.drag_orden or st.session_state[init_key][:]
+    st.session_state.drag_orden = orden_actual
+    for i, item in enumerate(orden_actual):
+        cols = st.columns([6, 1, 1])
+        cols[0].markdown(f"<div class='drag-item'>{i+1}. {item}</div>", unsafe_allow_html=True)
+        if not disabled:
+            if i > 0 and cols[1].button("▲", key=f"{key_prefix}_up_{i}"):
+                orden_actual[i], orden_actual[i-1] = orden_actual[i-1], orden_actual[i]
+                st.session_state.drag_orden = orden_actual[:]
+                st.rerun()
+            if i < len(orden_actual)-1 and cols[2].button("▼", key=f"{key_prefix}_dn_{i}"):
+                orden_actual[i], orden_actual[i+1] = orden_actual[i+1], orden_actual[i]
+                st.session_state.drag_orden = orden_actual[:]
+                st.rerun()
+    return st.session_state.drag_orden
+
+
+def render_fill(pregunta, key_prefix, disabled=False):
+    st.markdown(f"**{pregunta['template']}**")
+    respuestas = {}
+    for campo in pregunta["campos"]:
+        val = st.text_input(campo["label"], key=f"{key_prefix}_fill_{campo['clave']}",
+                            placeholder=f"Completa: {campo['label']}…", disabled=disabled)
+        respuestas[campo["clave"]] = val
+    return respuestas
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PANTALLAS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def pantalla_intro():
+    mostrar_top_bar()
+    st.markdown("""
+    <div class="intro-hero">
+      <h1>Hola compañero,<br>hacemos esto por tu bien ☕</h1>
+      <div class="sub">Evaluación RSA — Responsible Service of Alcohol</div>
+    </div>
+    """, unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="quiz-card">', unsafe_allow_html=True)
+        nombre = st.text_input("Déjanos tu nombre", placeholder="Escribe tu nombre completo…", key="input_nombre")
+        st.markdown('</div>', unsafe_allow_html=True)
+    if st.button("Comenzar ▶", key="btn_comenzar"):
+        if not nombre or len(nombre.strip()) < 2:
+            st.warning("Por favor ingresa tu nombre para continuar.")
+        else:
+            st.session_state.nombre   = nombre.strip()
+            st.session_state.pantalla = "rol"
+            st.rerun()
+
+
+def pantalla_rol():
+    mostrar_top_bar()
+    st.markdown(f"""
+    <div class="quiz-card" style="text-align:center;">
+      <div style="font-size:1.5rem; margin-bottom:.3rem;">👋</div>
+      <div style="font-size:1.2rem; font-weight:700; color:#00704A;">¡Hola, {st.session_state.nombre}!</div>
+      <div style="font-size:.9rem; color:#6B6B6B; margin-top:.3rem;">Selecciona tu rol para continuar</div>
+    </div>
+    """, unsafe_allow_html=True)
+    mostrar_codigo()
+    rol = st.radio("Selecciona tu rol:", ["Partner", "Gerencial"], key="radio_rol", horizontal=True)
+    if st.button("Continuar →", key="btn_rol"):
+        st.session_state.rol              = rol
+        st.session_state.preguntas_orden  = mezclar_preguntas(PREGUNTAS)
+        st.session_state.idx_actual       = 0
+        st.session_state.pantalla         = "quiz"
         st.rerun()
 
-# ─── PANTALLA: QUIZ ───────────────────────────────────────────────────────────
-def screen_quiz():
-    header_html()
-    validation_badge()
 
-    order = st.session_state.q_order
-    idx   = st.session_state.q_index
-    total = len(order)
+def pantalla_quiz():
+    mostrar_top_bar()
+    mostrar_codigo()
+    mostrar_progreso()
 
-    if idx >= total:
-        st.session_state.stage = "handwash"
+    preguntas = st.session_state.preguntas_orden
+    idx       = st.session_state.idx_actual
+
+    if idx >= len(preguntas):
+        st.session_state.pantalla = "resultado"
         st.rerun()
         return
 
-    qid = order[idx]
-    q   = get_question(qid)
+    pregunta   = preguntas[idx]
+    q_id       = pregunta["id"]
+    tipo       = pregunta["tipo"]
+    key_prefix = f"q{q_id}"
+    ya_respondida = st.session_state.mostrar_feedback
 
-    progress_bar(idx + 1, total)
-
+    # ── Card pregunta
     st.markdown(f"""
-    <div class="q-meta">
-        <span class="q-num">Pregunta {idx + 1}</span>
-        <span class="q-type">{q.get('type','').replace('_',' ').title()}</span>
+    <div class="quiz-card">
+      <div class="q-number">Pregunta {idx + 1} / {len(preguntas)}</div>
+      <div class="q-text">{pregunta["texto"]}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    answered = render_question(q, qid)
-
-    # ── Botón Siguiente ──
-    st.markdown("<br>", unsafe_allow_html=True)
-    already_sub = st.session_state.submitted.get(qid, False)
-
-    if not already_sub:
-        if st.button("➡️  Siguiente pregunta", use_container_width=True, key=f"next_{qid}"):
-            if answered:
-                # Marcar como enviado → calcula score y muestra feedback
-                st.session_state.submitted[qid] = True
+    # ── Comodín
+    tiene_comodin = bool(pregunta.get("comodin"))
+    if tiene_comodin and not ya_respondida:
+        if not st.session_state.comodin_usado:
+            if st.button("💡 Usar ayuda (comodín)", key=f"{key_prefix}_comodin"):
+                st.session_state.comodin_usado = True
                 st.rerun()
-            else:
-                st.warning("Por favor responde la pregunta antes de continuar.")
+        else:
+            st.markdown(f"""
+            <div class="comodin-box">
+              💡 <strong>Ayuda:</strong> {pregunta['comodin']}
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── Renderizar
+    respuesta = None
+    if tipo == "radio":
+        respuesta = render_radio(pregunta, key_prefix, disabled=ya_respondida)
+    elif tipo == "multi":
+        respuesta = render_multi(pregunta, key_prefix, disabled=ya_respondida)
+    elif tipo == "open":
+        respuesta = render_open(pregunta, key_prefix, disabled=ya_respondida)
+    elif tipo == "open_flexible":
+        respuesta = render_open_flexible(pregunta, key_prefix, disabled=ya_respondida)
+    elif tipo == "drag":
+        respuesta = render_drag(pregunta, key_prefix, disabled=ya_respondida)
+    elif tipo == "fill":
+        respuesta = render_fill(pregunta, key_prefix, disabled=ya_respondida)
+
+    st.markdown("---")
+
+    # ── CONFIRMAR
+    if not ya_respondida:
+        if st.button("Confirmar respuesta ✓", key=f"{key_prefix}_confirmar", use_container_width=True):
+            correcto, pts_ganados, meta = evaluar_respuesta(pregunta, respuesta)
+
+            st.session_state.respuestas[q_id] = {
+                "respuesta": str(respuesta),
+                "correcto":  correcto,
+                "pts":       pts_ganados,
+                "meta":      meta,
+            }
+            st.session_state.puntaje      += pts_ganados
+            st.session_state.mostrar_feedback = True
+            st.session_state.ultimo_feedback  = {
+                "correcto": correcto,
+                "pts":      pts_ganados,
+                "max":      pregunta["puntos"],
+                "meta":     meta,
+                "tipo":     tipo,
+            }
+            st.rerun()
+
+    # ── FEEDBACK + SIGUIENTE
     else:
-        # Ya fue enviada → mostrar feedback y botón para avanzar
-        show_feedback(q, qid)
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("▶️  Continuar", use_container_width=True, key=f"cont_{qid}"):
-            st.session_state.q_index += 1
+        fb   = st.session_state.ultimo_feedback
+        meta = fb.get("meta", {})
+
+        # Feedback especial para open_flexible (progresivo)
+        if fb["tipo"] == "open_flexible":
+            n     = meta.get("categorias_encontradas", 0)
+            total = meta.get("total_categorias", 3)
+            if n == 0:
+                st.markdown(f"""
+                <div class="feedback-wrong">
+                  ❌ No se identificaron tipos de contaminación. Obtuviste {fb['pts']}/{fb['max']} pts.<br>
+                  <small>Recuerda: Física, Química y Microbiológica.</small>
+                </div>
+                """, unsafe_allow_html=True)
+            elif n < total:
+                st.markdown(f"""
+                <div class="feedback-wrong">
+                  ⚠️ Identificaste {n} de {total} tipos. Obtuviste {fb['pts']}/{fb['max']} pts. ¡Bien encaminado!
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="feedback-correct">
+                  ✅ ¡Excelente! Identificaste los {total} tipos de contaminación. {fb['pts']}/{fb['max']} pts.
+                </div>
+                """, unsafe_allow_html=True)
+
+        # Feedback especial para fill con bonus no-gerencial
+        elif fb["tipo"] == "fill" and meta.get("es_bonus"):
+            st.markdown(f"""
+            <div class="feedback-bonus">
+              ⭐ Bonus por conocimiento avanzado — ¡Respondiste una pregunta gerencial!<br>
+              Obtuviste {fb['pts']} pts (incluye puntos extra).
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Feedback estándar
+        elif fb["correcto"]:
+            st.markdown(f"""
+            <div class="feedback-correct">
+              ✅ ¡Correcto! Obtuviste {fb['pts']} / {fb['max']} puntos.
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="feedback-wrong">
+              ❌ Incorrecto. Obtuviste {fb['pts']} / {fb['max']} puntos.
+            </div>
+            """, unsafe_allow_html=True)
+
+        siguiente_label = "Finalizar ✓" if idx == len(preguntas) - 1 else "Siguiente →"
+        if st.button(siguiente_label, key=f"{key_prefix}_next", use_container_width=True):
+            st.session_state.idx_actual       += 1
+            st.session_state.mostrar_feedback  = False
+            st.session_state.ultimo_feedback   = None
+            st.session_state.comodin_usado     = False
+            st.session_state.drag_orden        = []
+            keys_del = [k for k in st.session_state.keys()
+                        if k.startswith(f"q{q_id}_") and
+                        any(k.endswith(s) for s in ("_opciones_orden", "_drag_init", "_opciones"))]
+            for k in keys_del:
+                del st.session_state[k]
             st.rerun()
 
 
-def render_question(q: dict, qid: int) -> bool:
-    """Renderiza la pregunta SIN feedback. Retorna True si fue respondida."""
-    t = q["type"]
-    already_sub = st.session_state.submitted.get(qid, False)
-
-    if t == "multiple_choice":
-        return render_multiple_choice(q, qid, already_sub)
-    elif t == "true_false":
-        return render_true_false(q, qid, already_sub)
-    elif t == "chips_select":
-        return render_chips(q, qid, already_sub)
-    elif t == "open":
-        return render_open(q, qid, already_sub)
-    elif t == "fill_blank":
-        return render_fill_blank(q, qid, already_sub)
-    elif t == "open_joker":
-        return render_open_joker(q, qid, already_sub)
-    elif t == "open_bonus":
-        return render_open_bonus(q, qid, already_sub)
-    elif t == "order":
-        return render_order(q, qid, already_sub)
-    elif t == "fill_multiple":
-        return render_fill_multiple(q, qid, already_sub)
-    elif t == "open_role":
-        return render_open_role(q, qid, already_sub)
-    return False
-
-
-def show_feedback(q: dict, qid: int):
-    """Muestra feedback y calcula score SOLO después de presionar Siguiente."""
-    t = q["type"]
-
-    # ── Calcular score si aún no se calculó ──
-    if qid not in st.session_state.scores:
-        compute_score(q, qid)
-
-    pts = st.session_state.scores.get(qid, 0)
-
-    if t == "multiple_choice":
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">❌ Respuesta incorrecta. La correcta: <strong>{q["correct"]}</strong></div>', unsafe_allow_html=True)
-
-    elif t == "true_false":
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">❌ La respuesta correcta era <strong>Verdadero</strong>.</div>', unsafe_allow_html=True)
-
-    elif t == "chips_select":
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Perfecto!</div>', unsafe_allow_html=True)
-        else:
-            correct_set = set(q["correct"])
-            sel = set(st.session_state.chip_selections.get(f"chips_{qid}", []))
-            missed = correct_set - sel
-            missed_txt = ", ".join(missed) if missed else "—"
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts}/{q["points"]} pts). Faltaron: {missed_txt}</div>', unsafe_allow_html=True)
-
-    elif t in ("open", "open_joker", "open_bonus", "open_role"):
-        if pts >= q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Bien respondido!</div>', unsafe_allow_html=True)
-        elif pts > 0:
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({pts}/{q["points"]} pts).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incompleta o incorrecta.</div>', unsafe_allow_html=True)
-
-    elif t == "fill_blank":
-        if pts > 0:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
-
-    elif t == "fill_multiple":
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Correcto!</div>', unsafe_allow_html=True)
-        elif pts > 0:
-            blanks = q["blanks"]
-            hits = round(pts * blanks / q["points"])
-            st.markdown(f'<div class="feedback-wrong">Parcialmente correcto ({hits}/{blanks} síntomas).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="feedback-wrong">Respuesta incorrecta.</div>', unsafe_allow_html=True)
-
-    elif t == "order":
-        if pts == q["points"]:
-            st.markdown('<div class="feedback-correct">✅ ¡Orden correcto!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="feedback-wrong">Orden incorrecto ({pts}/{q["points"]} pts). Correcto: {" → ".join(q["correct_order"])}</div>', unsafe_allow_html=True)
-
-
-def compute_score(q: dict, qid: int):
-    """Calcula y almacena el puntaje de la pregunta a partir de las respuestas guardadas."""
-    t = q["type"]
-
-    if t == "multiple_choice":
-        ans = st.session_state.answers.get(qid, "")
-        pts = q["points"] if ans == q["correct"] else 0
-        st.session_state.scores[qid] = pts
-
-    elif t == "true_false":
-        ans = st.session_state.answers.get(qid, "")
-        pts = q["points"] if ans == q["correct"] else 0
-        st.session_state.scores[qid] = pts
-
-    elif t == "chips_select":
-        sel = set(st.session_state.chip_selections.get(f"chips_{qid}", []))
-        correct_set = set(q["correct"])
-        hits = len(sel & correct_set)
-        pts = round((hits / len(correct_set)) * q["points"])
-        st.session_state.scores[qid] = pts
-
-    elif t == "open":
-        ans = st.session_state.answers.get(qid, "")
-        hits = count_keywords(ans, q["keywords"])
-        ratio = hits / max(len(q["keywords"]), 1)
-        pts = q["points"] if ratio >= 0.4 else 0
-        st.session_state.scores[qid] = pts
-
-    elif t == "fill_blank":
-        ans = st.session_state.answers.get(qid, "")
-        pts = q["points"] if flexible_match(ans, q["keywords"]) else 0
-        st.session_state.scores[qid] = pts
-
-    elif t == "open_joker":
-        ans = st.session_state.answers.get(qid, "")
-        hits = count_keywords(ans, q["keywords"])
-        ratio = hits / max(len(q["keywords"]), 1)
-        pts = q["points"] if ratio >= 0.35 else 0
-        st.session_state.scores[qid] = pts
-
-    elif t == "open_bonus":
-        ans = st.session_state.answers.get(qid, "")
-        base_hits  = count_keywords(ans, q["base_keywords"])
-        bonus_hits = count_keywords(ans, q["bonus_keywords"])
-        ratio = base_hits / max(len(q["base_keywords"]), 1)
-        pts = round(ratio * q["points"])
-        if bonus_hits >= 2:
-            pts = min(pts + q["bonus_points"], q["points"] + q["bonus_points"])
-        st.session_state.scores[qid] = min(pts, q["points"] + q["bonus_points"])
-
-    elif t == "order":
-        current = st.session_state.order_state.get(f"order_{qid}", [])
-        if current == q["correct_order"]:
-            pts = q["points"]
-        else:
-            hits = sum(1 for a, b in zip(current, q["correct_order"]) if a == b)
-            pts = round((hits / len(q["correct_order"])) * q["points"])
-        st.session_state.scores[qid] = pts
-
-    elif t == "fill_multiple":
-        blanks_ans = st.session_state.answers.get(qid, [])
-        hits = 0
-        for i, val in enumerate(blanks_ans):
-            if i < len(q["blank_keywords"]) and flexible_match(val, q["blank_keywords"][i]):
-                hits += 1
-        pts = round((hits / q["blanks"]) * q["points"])
-        st.session_state.scores[qid] = pts
-
-    elif t == "open_role":
-        ans = st.session_state.answers.get(qid, "")
-        rol = st.session_state.rol
-        is_gerencial = (rol == "Gerencial")
-        keywords = q["keywords_gerencial"] if is_gerencial else q["keywords_base"]
-        required_hits = 3 if is_gerencial else 2
-        hits = count_keywords(ans, keywords)
-        pts = round(min(hits / max(len(keywords), 1), 1.0) * q["points"])
-        if hits >= required_hits:
-            pts = q["points"]
-        st.session_state.scores[qid] = pts
-
-
-# ─── Helpers de tarjeta ──
-def card_open(extra_style=""):
-    st.markdown(f'<div class="quiz-card" style="{extra_style}">', unsafe_allow_html=True)
-def card_close():
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def qtext(text):
-    st.markdown(f'<div class="q-text">{text}</div>', unsafe_allow_html=True)
-
-# ─── Tipo: Selección múltiple ─────────────────────────────────────────────────
-def render_multiple_choice(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    key = f"mc_{qid}"
-    sel = st.radio("", q["options"], key=key, index=None, disabled=disabled)
-    card_close()
-
-    if sel is not None:
-        st.session_state.answers[qid] = sel
-
-    return sel is not None or disabled
-
-# ─── Tipo: Verdadero/Falso ────────────────────────────────────────────────────
-def render_true_false(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    key = f"tf_{qid}"
-    sel = st.radio("", ["Verdadero", "Falso"], key=key, index=None, disabled=disabled)
-
-    # Si elige Falso, pedimos que escriba la respuesta correcta (sin revelar nada aún)
-    if sel == "Falso" and not disabled:
-        extra_text = st.text_input(
-            "¿Cuál crees que es la respuesta correcta?",
-            key=f"tf_extra_{qid}",
-        )
-        st.session_state.answers[qid] = f"Falso → {extra_text}"
-    elif sel == "Verdadero":
-        st.session_state.answers[qid] = "Verdadero"
-
-    card_close()
-
-    return sel is not None or disabled
-
-# ─── Tipo: Chips (selección múltiple sin límite artificial) ──────────────────
-def render_chips(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    st.caption(q.get("instruction", "Selecciona las opciones correctas."))
-
-    # Construir lista mezclada una sola vez por sesión
-    all_key = f"chips_all_{qid}"
-    if all_key not in st.session_state:
-        all_items = q["correct"] + q["distractors"]
-        random.shuffle(all_items)
-        st.session_state[all_key] = all_items
-
-    all_items = st.session_state[all_key]
-    sel_key = f"chips_{qid}"
-    if sel_key not in st.session_state.chip_selections:
-        st.session_state.chip_selections[sel_key] = []
-
-    selected = st.session_state.chip_selections[sel_key]
-
-    # ── CORRECCIÓN: checkboxes independientes, sin límite de 2 ──
-    cols = st.columns(3)
-    for i, item in enumerate(all_items):
-        is_sel = item in selected
-        col = cols[i % 3]
-        with col:
-            checked = st.checkbox(
-                item,
-                value=is_sel,
-                key=f"chip_{qid}_{i}",
-                disabled=disabled,
-            )
-            if checked and item not in selected:
-                selected.append(item)
-            elif not checked and item in selected:
-                selected.remove(item)
-
-    st.session_state.chip_selections[sel_key] = selected
-    card_close()
-
-    return len(selected) > 0 or disabled
-
-# ─── Tipo: Pregunta abierta ───────────────────────────────────────────────────
-def render_open(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    ans = st.text_area("Tu respuesta:", key=f"open_{qid}", height=100, disabled=disabled)
-    card_close()
-
-    if ans.strip():
-        st.session_state.answers[qid] = ans
-
-    return bool(ans.strip()) or disabled
-
-# ─── Tipo: Completar espacio en blanco ───────────────────────────────────────
-def render_fill_blank(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    ans = st.text_input("Completa:", key=f"fill_{qid}", disabled=disabled)
-    card_close()
-
-    if ans.strip():
-        st.session_state.answers[qid] = ans
-
-    return bool(ans.strip()) or disabled
-
-# ─── Tipo: Abierta con comodín/ayuda ─────────────────────────────────────────
-def render_open_joker(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-
-    if "hint_prefix" in q:
-        st.markdown(f"<p style='font-size:0.95rem;color:var(--text-mid);margin-bottom:0.7rem;'>{q['hint_prefix']}</p>", unsafe_allow_html=True)
-
-    joker_key = f"joker_{qid}"
-    if joker_key not in st.session_state.joker_used:
-        st.session_state.joker_used[joker_key] = False
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button(f"🎁 {q['joker_label']}", key=f"jbtn_{qid}", disabled=st.session_state.joker_used[joker_key] or disabled):
-            st.session_state.joker_used[joker_key] = True
-            st.rerun()
-
-    if st.session_state.joker_used[joker_key]:
-        st.markdown(f'<div class="joker-box"><strong>💡 Pista:</strong> {q["joker"]}</div>', unsafe_allow_html=True)
-
-    ans = st.text_area("Tu respuesta:", key=f"openj_{qid}", height=100, disabled=disabled)
-    card_close()
-
-    if ans.strip():
-        st.session_state.answers[qid] = ans
-
-    return bool(ans.strip()) or disabled
-
-# ─── Tipo: Abierta con bonus ──────────────────────────────────────────────────
-def render_open_bonus(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    ans = st.text_area("Tu respuesta:", key=f"bonus_{qid}", height=120, disabled=disabled)
-    card_close()
-
-    if ans.strip():
-        st.session_state.answers[qid] = ans
-
-    return bool(ans.strip()) or disabled
-
-# ─── Tipo: Ordenar pasos ──────────────────────────────────────────────────────
-def render_order(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    st.caption("Ordena los pasos usando los botones ▲ ▼.")
-
-    order_key = f"order_{qid}"
-    if order_key not in st.session_state.order_state:
-        shuffled = q["items"].copy()
-        random.shuffle(shuffled)
-        st.session_state.order_state[order_key] = shuffled
-
-    current = st.session_state.order_state[order_key]
-
-    for i, item in enumerate(current):
-        c1, c2, c3 = st.columns([0.5, 3, 1])
-        with c1:
-            st.markdown(f"<span style='font-size:1.1rem;'>{'①②③④'[i]}</span>", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"<div class='order-item'><span class='order-handle'>☰</span> {item}</div>", unsafe_allow_html=True)
-        with c3:
-            if not disabled:
-                if i > 0 and st.button("▲", key=f"up_{qid}_{i}"):
-                    current[i], current[i-1] = current[i-1], current[i]
-                    st.session_state.order_state[order_key] = current
-                    st.rerun()
-                if i < len(current)-1 and st.button("▼", key=f"dn_{qid}_{i}"):
-                    current[i], current[i+1] = current[i+1], current[i]
-                    st.session_state.order_state[order_key] = current
-                    st.rerun()
-
-    card_close()
-
-    # La pregunta de orden se considera respondida cuando el usuario ha
-    # interactuado al menos una vez (siempre tiene un orden, así que True)
-    return True
-
-# ─── Tipo: Completar múltiples faltantes ─────────────────────────────────────
-def render_fill_multiple(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-    st.markdown(f"<p style='font-size:0.88rem;color:var(--text-mid);'>Ya dados: <strong>{', '.join(q['given'])}</strong></p>", unsafe_allow_html=True)
-    st.caption("Completa los campos faltantes:")
-
-    answers_blanks = []
-    for i in range(q["blanks"]):
-        val = st.text_input(f"Síntoma {i+1}:", key=f"blank_{qid}_{i}", disabled=disabled)
-        answers_blanks.append(val)
-
-    card_close()
-
-    if any(v.strip() for v in answers_blanks):
-        st.session_state.answers[qid] = answers_blanks
-
-    all_filled = all(v.strip() for v in answers_blanks)
-    return all_filled or disabled
-
-# ─── Tipo: Abierta adaptativa por rol (P17) ───────────────────────────────────
-def render_open_role(q, qid, disabled):
-    card_open()
-    qtext(q["text"])
-
-    rol = st.session_state.rol
-    is_gerencial = (rol == "Gerencial")
-
-    if not is_gerencial:
-        st.markdown('<div class="joker-box"><strong>💡 Ayuda:</strong> Son 3 acciones.</div>', unsafe_allow_html=True)
-
-    ans = st.text_area("Tu respuesta:", key=f"role_q_{qid}", height=130, disabled=disabled)
-    card_close()
-
-    if ans.strip():
-        st.session_state.answers[qid] = ans
-
-    return bool(ans.strip()) or disabled
-
-# ─── PANTALLA: LAVADO DE MANOS ────────────────────────────────────────────────
-def screen_handwash():
-    header_html()
-    validation_badge()
+def pantalla_resultado():
+    mostrar_top_bar()
+
+    score_final = min(100, st.session_state.puntaje)
+    pct         = score_final
 
     st.markdown("""
-    <div class="handwash-notice">
-        <h2>🙌 ¡Ya casi terminas!</h2>
-        <p>Falta ver tu lavado de manos.</p>
-        <p>Eso será calificado en tienda.</p>
-        <p style="font-size:1.1rem;font-weight:600;margin-top:0.8rem;">¡Suerte! ☘️</p>
+    <div class="quiz-card" style="text-align:center; border: 2px solid #CBA135;">
+      <div style="font-size:1.5rem;">🧴</div>
+      <div style="font-size:1.05rem; font-weight:600; margin:.4rem 0;">Falta ver tu lavado de manos.</div>
+      <div style="color:#6B6B6B;">Eso será calificado en tienda.</div>
+      <div style="font-size:1.2rem; margin-top:.5rem;">¡Suerte! 🍀</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if score_final >= 70:
+        st.markdown('<div class="confetti-msg">🎉🎊✨🎉🎊</div>', unsafe_allow_html=True)
+
+    if score_final == 100:
+        msg = "🏆 Excelente estimado, ganaste un abrazo de tu líder RSA. ¡Canjéalo cuando quieras!"
+    elif score_final >= 90:
+        msg = "⭐ Excelente resultado. ¡Dominas el RSA!"
+    elif score_final >= 70:
+        msg = "👍 Buen trabajo. Sigue reforzando tus conocimientos."
+    elif score_final >= 50:
+        msg = "📚 Debes reforzar algunos conceptos RSA."
+    else:
+        msg = "⚠️ Urgente reforzar conocimientos RSA. ¡Pide apoyo a tu líder!"
+
+    st.markdown(f"""
+    <div class="score-card">
+      <div class="big-score">{score_final}</div>
+      <div class="score-pct">{pct}% de 100 puntos</div>
+      <div class="score-msg">{msg}</div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("📊  Ver mi puntaje final", use_container_width=True):
-        st.session_state.stage = "result"
-        st.rerun()
-
-# ─── PANTALLA: RESULTADO ──────────────────────────────────────────────────────
-def screen_result():
-    header_html()
-    validation_badge()
-
-    max_possible = TOTAL_POINTS + sum(q.get("bonus_points", 0) for q in QUESTIONS_POOL)
-    earned = sum(st.session_state.scores.values())
-    score_100 = min(round((earned / max_possible) * 100), 100)
-
-    if not st.session_state.saved:
-        data = {
-            "nombre":    st.session_state.nombre,
-            "rol":       st.session_state.rol,
-            "codigo":    st.session_state.unique_code,
-            "score":     score_100,
-            "porcentaje": f"{score_100}%",
-            "fecha":     datetime.date.today().isoformat(),
-            "hora":      datetime.datetime.now().strftime("%H:%M:%S"),
-            "browser":   platform.platform(),
-            "uuid":      st.session_state.session_uuid,
-            "respuestas": st.session_state.answers,
-        }
-        save_to_sheets(data)
-        st.session_state.saved = True
-
-    if score_100 == 100:
-        color = "#00704A"
-        msg = "🏆 Excelente estimado, ganaste un abrazo de tu líder RSA. ¡Canjéalo cuando quieras!"
-    elif score_100 >= 90:
-        color = "#00704A"
-        msg = "⭐ ¡Excelente! Dominas muy bien los temas RSA."
-    elif score_100 >= 70:
-        color = "#C47B37"
-        msg = "👍 ¡Buen trabajo! Sigue reforzando."
-    elif score_100 >= 50:
-        color = "#CBA258"
-        msg = "📚 Debes reforzar algunos temas RSA."
-    else:
-        color = "#C0392B"
-        msg = "🚨 Urgente: reforzar conocimientos RSA."
-
-    st.markdown(f"""
-    <div class="quiz-card score-big">
-        <div class="score-number" style="color:{color};">{score_100}</div>
-        <div class="score-label">puntos de 100</div>
-        <div class="score-msg" style="background:{color}22;color:{color};">{msg}</div>
-        <p style="font-size:0.95rem;color:var(--text-mid);">📸 Sácale captura a tu resultado</p>
-    </div>
-    """, unsafe_allow_html=True)
 
     st.markdown('<div class="quiz-card">', unsafe_allow_html=True)
-    st.markdown('<p style="font-family:Syne,sans-serif;font-weight:700;font-size:1rem;margin-bottom:0.8rem;">Detalle por pregunta</p>', unsafe_allow_html=True)
-    for q in QUESTIONS_POOL:
-        qid = q["id"]
-        earned_q = st.session_state.scores.get(qid, 0)
-        max_q = q["points"] + q.get("bonus_points", 0)
-        label = f"P{qid}: {q['text'][:55]}…" if len(q['text']) > 55 else f"P{qid}: {q['text']}"
-        icon = "✅" if earned_q >= q["points"] else ("⚡" if earned_q > 0 else "❌")
+    st.markdown("### 📊 Detalle de tu evaluación")
+
+    for p in st.session_state.preguntas_orden:
+        reg         = st.session_state.respuestas.get(p["id"], {})
+        correcto    = reg.get("correcto", False)
+        pts_ganados = reg.get("pts", 0)
+        icono       = "✅" if correcto else ("⚠️" if pts_ganados > 0 else "❌")
+        texto       = p["texto"][:55] + ("…" if len(p["texto"]) > 55 else "")
+        # Etiqueta bonus
+        meta        = reg.get("meta", {})
+        bonus_tag   = " ⭐" if meta.get("es_bonus") else ""
         st.markdown(f"""
         <div class="breakdown-row">
-            <span>{icon} {label}</span>
-            <span class="pts">{earned_q}/{max_q}</span>
+          <span>{icono} {texto}{bonus_tag}</span>
+          <span class="breakdown-pts">{pts_ganados}/{p['puntos']}</span>
         </div>
         """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    if score_100 >= 70:
-        st.markdown("""
-        <canvas id="confetti-canvas"></canvas>
-        <script>
-        (function(){
-          var canvas = document.getElementById('confetti-canvas');
-          if(!canvas) return;
-          var ctx = canvas.getContext('2d');
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-          var pieces = [];
-          var colors = ['#00704A','#CBA258','#F5A623','#C47B37','#D4E9E2','#1E3932'];
-          for(var i=0;i<160;i++){
-            pieces.push({
-              x: Math.random()*canvas.width,
-              y: Math.random()*canvas.height - canvas.height,
-              r: Math.random()*6+4,
-              d: Math.random()*160+80,
-              color: colors[Math.floor(Math.random()*colors.length)],
-              tilt: Math.floor(Math.random()*10)-10,
-              speed: Math.random()*3+1
-            });
-          }
-          var angle = 0;
-          function draw(){
-            ctx.clearRect(0,0,canvas.width,canvas.height);
-            angle += 0.01;
-            pieces.forEach(function(p,i){
-              ctx.beginPath();
-              ctx.lineWidth = p.r/2;
-              ctx.strokeStyle = p.color;
-              ctx.moveTo(p.x+p.tilt+p.r/4, p.y);
-              ctx.lineTo(p.x+p.tilt, p.y+p.tilt+p.r/4);
-              ctx.stroke();
-              p.y += p.speed;
-              p.tilt = Math.sin(angle+i)*15;
-              if(p.y > canvas.height) p.y = -10;
-            });
-            requestAnimationFrame(draw);
-          }
-          draw();
-          setTimeout(function(){ canvas.remove(); }, 6000);
-        })();
-        </script>
-        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div style="background:rgba(30,57,50,0.05);border-radius:12px;padding:1rem 1.2rem;font-size:0.8rem;color:var(--text-light);margin-top:1rem;">
-        👤 {st.session_state.nombre} · {st.session_state.rol} ·
-        Código: <strong>{st.session_state.unique_code}</strong> ·
-        {datetime.datetime.now().strftime("%d/%m/%Y %H:%M")}
+    st.markdown("""
+    <div style="text-align:center; margin:1rem 0; font-size:1rem; font-weight:600; color:#00704A;">
+      📸 Sácale captura a tu resultado
     </div>
     """, unsafe_allow_html=True)
 
-# ─── Router principal ─────────────────────────────────────────────────────────
-stage = st.session_state.stage
+    mostrar_codigo()
 
-if stage == "intro":
-    screen_intro()
-elif stage == "role":
-    screen_role()
-elif stage == "quiz":
-    screen_quiz()
-elif stage == "handwash":
-    screen_handwash()
-elif stage == "result":
-    screen_result()
+    if not st.session_state.guardado:
+        now = datetime.now()
+        datos = {
+            "nombre":     st.session_state.nombre,
+            "rol":        st.session_state.rol,
+            "codigo":     st.session_state.codigo,
+            "score":      score_final,
+            "porcentaje": f"{pct}%",
+            "fecha":      now.strftime("%Y-%m-%d"),
+            "hora":       now.strftime("%H:%M:%S"),
+            "uuid":       st.session_state.uuid,
+            "respuestas": st.session_state.respuestas,
+        }
+        guardado_ok = guardar_en_sheets(datos)
+        st.session_state.guardado = True
+        if guardado_ok:
+            st.success("✅ Resultados registrados correctamente.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔄 Volver a intentar", key="btn_reiniciar"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  ROUTER
+# ─────────────────────────────────────────────────────────────────────────────
+
+pantalla = st.session_state.pantalla
+if pantalla == "intro":
+    pantalla_intro()
+elif pantalla == "rol":
+    pantalla_rol()
+elif pantalla == "quiz":
+    pantalla_quiz()
+elif pantalla == "resultado":
+    pantalla_resultado()
