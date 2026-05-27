@@ -523,23 +523,30 @@ def evaluar_contaminacion_compuesta(resp_tipos: str, resp_ejemplos: str, pregunt
 
 
 def evaluar_respuesta(pregunta: dict, respuesta) -> tuple:
-    """Retorna (correcto, puntos_ganados, meta_dict)."""
+    """
+    Retorna (correcto, puntos_ganados, meta_dict).
+    CANDADO: pts_ganados nunca puede superar pregunta["puntos"].
+    """
     tipo = pregunta["tipo"]
-    pts  = pregunta["puntos"]
+    pts  = pregunta["puntos"]   # techo absoluto para esta pregunta
     meta = {}
+
+    def _cap(valor: int) -> int:
+        """Garantiza 0 <= valor <= pts (máximo de la pregunta)."""
+        return max(0, min(int(valor), pts))
 
     if tipo == "radio":
         correcto = respuesta == pregunta["correcta"]
-        return correcto, pts if correcto else 0, meta
+        return correcto, _cap(pts if correcto else 0), meta
 
     elif tipo == "verdadero_falso":
         opcion = respuesta.get("opcion", "") if isinstance(respuesta, dict) else str(respuesta)
         correcto = opcion == pregunta["correcta"]
-        return correcto, pts if correcto else 0, meta
+        return correcto, _cap(pts if correcto else 0), meta
 
     elif tipo == "open":
         correcto = respuesta_abierta_correcta(str(respuesta), pregunta["respuestas_validas"])
-        return correcto, pts if correcto else 0, meta
+        return correcto, _cap(pts if correcto else 0), meta
 
     elif tipo == "open_flexible":
         correcto, pts_ganados, n, total = evaluar_open_flexible_categorias(
@@ -547,7 +554,7 @@ def evaluar_respuesta(pregunta: dict, respuesta) -> tuple:
         )
         meta["n"] = n
         meta["total"] = total
-        return correcto, pts_ganados, meta
+        return correcto, _cap(pts_ganados), meta
 
     elif tipo == "open_flexible_bonus":
         correcto, pts_ganados, n, total = evaluar_open_flexible_categorias(
@@ -556,37 +563,36 @@ def evaluar_respuesta(pregunta: dict, respuesta) -> tuple:
         meta["n"] = n
         meta["total"] = total
         es_bonus = False
+        # Bonus para no-gerencial: suma extra pero tope sigue siendo pts
         if st.session_state.rol != "Gerencial" and n >= 3:
             es_bonus = True
-            pts_ganados = min(pts + pregunta.get("puntos_bonus_no_gerencial", 0), pts + 5)
+            pts_ganados = pts_ganados + pregunta.get("puntos_bonus_no_gerencial", 0)
         meta["es_bonus"] = es_bonus
-        return correcto, pts_ganados, meta
+        return correcto, _cap(pts_ganados), meta
 
     elif tipo == "contaminacion_compuesta":
-        # respuesta es dict: {"tipos": str, "ejemplos": str}
         resp_tipos    = str(respuesta.get("tipos", ""))
         resp_ejemplos = str(respuesta.get("ejemplos", ""))
         correcto, pts_ganados, meta = evaluar_contaminacion_compuesta(
             resp_tipos, resp_ejemplos, pregunta
         )
-        return correcto, pts_ganados, meta
+        return correcto, _cap(pts_ganados), meta
 
     elif tipo == "drag":
         correcto = list(respuesta) == pregunta["items_ordenados"]
-        return correcto, pts if correcto else 0, meta
+        return correcto, _cap(pts if correcto else 0), meta
 
     elif tipo == "fill":
         campos   = pregunta["campos"]
         aciertos = 0
         for campo in campos:
             val = str(respuesta.get(campo["clave"], "")).strip().lower()
-            # Comparar solo internamente — correcta no se muestra al jugador
             correcta_lower = campo["correcta"].lower()
             alternativas   = [a.lower() for a in campo.get("alternativas", [])]
             if val == correcta_lower or val in alternativas or respuesta_abierta_correcta(val, [correcta_lower] + alternativas):
                 aciertos += 1
         correcto = aciertos == len(campos)
-        return correcto, round((aciertos / len(campos)) * pts), meta
+        return correcto, _cap(round((aciertos / len(campos)) * pts)), meta
 
     return False, 0, meta
 
@@ -1233,8 +1239,13 @@ def pantalla_quiz():
 def pantalla_resultado():
     mostrar_top_bar()
 
-    score_final = min(100, st.session_state.puntaje)
-    pct         = score_final
+    # Puntos obtenidos (ya están capados por _cap en evaluar_respuesta)
+    score_final = st.session_state.puntaje
+
+    # FIX: porcentaje dinámico sobre la suma real de puntos máximos del examen
+    pts_maximos = sum(p["puntos"] for p in st.session_state.preguntas_orden)
+    pct = round((score_final / pts_maximos) * 100) if pts_maximos > 0 else 0
+    pct = min(pct, 100)  # techo de 100% por si bonus empuja más
 
     st.markdown("""
     <div class="quiz-card" style="text-align:center; border: 2px solid var(--green-l);">
@@ -1261,7 +1272,7 @@ def pantalla_resultado():
     st.markdown(f"""
     <div class="score-card">
       <div class="big-score">{score_final}</div>
-      <div class="score-pct">{pct}% de 100 puntos</div>
+      <div class="score-pct">{pct}% de {pts_maximos} puntos</div>
       <div class="score-msg">{msg}</div>
     </div>""", unsafe_allow_html=True)
 
