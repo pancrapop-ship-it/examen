@@ -352,7 +352,7 @@ PREGUNTAS = [
             "bacteria","virus","hongo","microorganismo","germen",
             "suciedad","tierra","objeto","fragmento","partícula",
         ],
-        "comodin": "Existen 3 tipos: Física (polvo, cabellos, objetos extraños), Química (detergentes, pesticidas) y Microbiológica (bacterias, hongos, virus).",
+        "comodin": "Piensa en los 3 grandes grupos de riesgos que pueden contaminar un alimento.",
     },
     # ── P4
     {
@@ -396,7 +396,7 @@ PREGUNTAS = [
             "ictericia": ["ictericia","piel amarilla","ojos amarillos","amarillo","amarilla"],
             "lesión":    ["lesión","lesion","herida","herida abierta","cortada","llaga","úlcera"],
         },
-        "comodin": "Los 5 síntomas de exclusión son: Diarrea, Vómito, Fiebre, Ictericia (piel/ojos amarillos) y Lesión expuesta.",
+        "comodin": "Recuerda: son 5 síntomas. Piensa en los que afectan el sistema digestivo, la temperatura corporal y la piel.",
     },
 ]
 
@@ -443,19 +443,34 @@ def mezclar_preguntas(preguntas: list) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def evaluar_open_flexible_categorias(respuesta: str, categorias: dict, pts: int):
-    """Evaluación progresiva por categorías."""
+    """
+    Evaluación por categorías con umbral estricto.
+    - Respuesta menor a 3 chars → 0 pts siempre.
+    - Solo suma categoría si hay coincidencia EXACTA de substring (keyword in texto).
+    - Fuzzy solo como último recurso con umbral alto (0.75).
+    - Puntuación: 1 cat = 30%, 2 cat = proporcional, todas = 100%.
+    """
     resp_lower = respuesta.strip().lower()
+
+    # Respuesta demasiado corta = 0 puntos sin importar nada
+    if len(resp_lower) < 3:
+        return False, 0, 0, len(categorias)
+
     encontradas = set()
     for nombre_cat, keywords in categorias.items():
+        # Coincidencia exacta de substring (más fiable)
         for kw in keywords:
             if kw in resp_lower:
                 encontradas.add(nombre_cat)
                 break
+        # Fuzzy solo si no encontró por substring y umbral alto
         if nombre_cat not in encontradas:
-            if similarity_score(resp_lower, keywords) >= 0.55:
+            if similarity_score(resp_lower, keywords) >= 0.75:
                 encontradas.add(nombre_cat)
+
     n     = len(encontradas)
     total = len(categorias)
+
     if n == 0:
         pts_ganados = 0
     elif n == 1:
@@ -464,6 +479,7 @@ def evaluar_open_flexible_categorias(respuesta: str, categorias: dict, pts: int)
         pts_ganados = round(pts * (n / total))
     else:
         pts_ganados = pts
+
     return n == total, pts_ganados, n, total
 
 
@@ -482,11 +498,13 @@ def evaluar_contaminacion_compuesta(resp_tipos: str, resp_ejemplos: str, pregunt
         resp_tipos, pregunta["categorias_tipos"], pts_tipos_max
     )
 
-    # ── Ejemplos (basta 1 ejemplo reconocible para el 100% de esta parte)
+    # ── Ejemplos (basta 1 ejemplo reconocible — solo por substring exacto)
     resp_ej_lower = resp_ejemplos.strip().lower()
-    ejemplo_ok = any(kw in resp_ej_lower for kw in pregunta["ejemplos_keywords"])
-    if not ejemplo_ok:
-        ejemplo_ok = similarity_score(resp_ej_lower, pregunta["ejemplos_keywords"]) >= 0.50
+    ejemplo_ok = False
+    if len(resp_ej_lower) >= 3:
+        ejemplo_ok = any(kw in resp_ej_lower for kw in pregunta["ejemplos_keywords"])
+        if not ejemplo_ok:
+            ejemplo_ok = similarity_score(resp_ej_lower, pregunta["ejemplos_keywords"]) >= 0.75
     pts_ejemplos_ganados = pts_ejemplos_max if ejemplo_ok else 0
 
     pts_total_ganados = pts_tipos_ganados + pts_ejemplos_ganados
@@ -804,8 +822,7 @@ def mostrar_top_bar():
     st.markdown("""
     <div class="top-bar">
       <div><div class="logo">☕</div></div>
-      <div><div class="title-text">RSA Quiz</div>
-           <div class="sub">Responsible Service of Alcohol</div></div>
+      <div><div class="title-text">Evaluación RSA</div></div>
       <div style="font-size:.75rem; opacity:.8;">Starbucks</div>
     </div>""", unsafe_allow_html=True)
 
@@ -872,10 +889,10 @@ def render_open(pregunta, key_prefix, disabled=False):
 
 
 def render_open_flexible(pregunta, key_prefix, disabled=False):
-    st.markdown("💡 *Puedes mencionar los tipos y/o dar ejemplos concretos.*")
+    st.markdown("💡 *Menciona los tipos que recuerdes.*")
     return st.text_area("Tu respuesta:", key=f"{key_prefix}_flex",
                         height=110,
-                        placeholder="Ej: contaminación física como polvo, química, microbiológica…",
+                        placeholder="Escribe tu respuesta…",
                         disabled=disabled)
 
 
@@ -883,7 +900,7 @@ def render_open_flexible_bonus(pregunta, key_prefix, disabled=False):
     st.markdown("💡 *Menciona los síntomas que recuerdes.*")
     return st.text_area("Tu respuesta:", key=f"{key_prefix}_bonus",
                         height=110,
-                        placeholder="Ej: diarrea, fiebre, ictericia, lesión expuesta, vómito…",
+                        placeholder="Escribe tu respuesta…",
                         disabled=disabled)
 
 
@@ -906,7 +923,7 @@ def render_contaminacion_compuesta(pregunta, key_prefix, disabled=False):
         "¿Qué tipos de contaminación cruzada existen?",
         key=f"{key_prefix}_tipos",
         height=80,
-        placeholder="Escribe los tipos que recuerdes…",
+        placeholder="Escribe tu respuesta…",
         disabled=disabled,
     )
 
@@ -920,7 +937,7 @@ def render_contaminacion_compuesta(pregunta, key_prefix, disabled=False):
         "Escribe al menos un ejemplo de cualquier tipo:",
         key=f"{key_prefix}_ejemplos",
         height=80,
-        placeholder="Ej: un cabello en la bebida, detergente mal enjuagado, bacterias por mala limpieza…",
+        placeholder="Escribe tu respuesta…",
         disabled=disabled,
     )
 
@@ -1088,6 +1105,32 @@ def pantalla_quiz():
     if not ya_respondida:
         if st.button("Confirmar respuesta ✓", key=f"{key_prefix}_confirmar",
                      use_container_width=True):
+
+            # GUARD: bloquear respuesta vacía
+            respuesta_vacia = False
+            if tipo == "radio" and respuesta is None:
+                respuesta_vacia = True
+            elif tipo == "verdadero_falso":
+                opcion_vf = respuesta.get("opcion", "") if isinstance(respuesta, dict) else ""
+                if not opcion_vf:
+                    respuesta_vacia = True
+            elif tipo in ("open", "open_flexible", "open_flexible_bonus"):
+                if not respuesta or not str(respuesta).strip():
+                    respuesta_vacia = True
+            elif tipo == "contaminacion_compuesta":
+                t = str(respuesta.get("tipos","")).strip() if respuesta else ""
+                e = str(respuesta.get("ejemplos","")).strip() if respuesta else ""
+                if not t and not e:
+                    respuesta_vacia = True
+            elif tipo == "fill":
+                vals = [str(v).strip() for v in (respuesta or {}).values()]
+                if not any(vals):
+                    respuesta_vacia = True
+
+            if respuesta_vacia:
+                st.warning("⚠️ Debes escribir o seleccionar una respuesta antes de continuar.")
+                st.stop()
+
             correcto, pts_ganados, meta = evaluar_respuesta(pregunta, respuesta)
             st.session_state.respuestas[q_id] = {
                 "respuesta": str(respuesta),
