@@ -304,7 +304,7 @@ PREGUNTAS_BASE = [
         "id": 1,
         "texto": "Menciona los rangos de temperatura de refrigeradores.",
         "tipo": "radio",
-        "opciones": ["1 a 4°C", "1 a 3°C", "2 a 4°C", "3 a 6°C"],
+        "opciones": ["1 a 4°C", "1 a 3°C", "1 a 5°C", "0 a 4°C"],
         "correcta": "1 a 4°C",
         "puntos": 0,   # se calcula dinámicamente
         "comodin": None,
