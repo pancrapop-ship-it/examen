@@ -51,7 +51,7 @@ except ImportError:
 #  PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="RSA Quiz",
+    page_title="Evaluación RSA",
     page_icon="☕",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -295,11 +295,10 @@ div[data-testid="stTextArea"] textarea:focus {
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  PREGUNTAS
-#  FIX: P3 es ahora tipo "contaminacion_compuesta" (tipos + ejemplos en una pantalla)
-#       P5 fill: los campos correctos son internos, NO se muestran al jugador
+#  PREGUNTAS — puntos base en 0; se asignan dinámicamente en mezclar_preguntas()
+#  Regla: 100 puntos / n_preguntas, distribuidos equitativamente.
 # ─────────────────────────────────────────────────────────────────────────────
-PREGUNTAS = [
+PREGUNTAS_BASE = [
     # ── P1
     {
         "id": 1,
@@ -307,7 +306,7 @@ PREGUNTAS = [
         "tipo": "radio",
         "opciones": ["1 a 4°C", "1 a 3°C", "2 a 4°C", "3 a 6°C"],
         "correcta": "1 a 4°C",
-        "puntos": 5,
+        "puntos": 0,   # se calcula dinámicamente
         "comodin": None,
     },
     # ── P2
@@ -316,16 +315,15 @@ PREGUNTAS = [
         "texto": "¿La concentración de sanitizante que maneja Starbucks es de 100-200 ppm?",
         "tipo": "verdadero_falso",
         "correcta": "Verdadero",
-        "puntos": 5,
+        "puntos": 0,
         "comodin": None,
     },
     # ── P3  COMPUESTA: tipos (75%) + ejemplos (25%)
     {
         "id": 3,
-        "texto": "¿Qué tipos de contaminación cruzada existen en bebidas y alimentos?",
+        "texto": "¿Qué tipos de riesgos de contaminación existen en alimentos y bebidas? Da algunos ejemplos.",
         "tipo": "contaminacion_compuesta",
-        "puntos": 8,
-        # Sub-parte 1 — tipos (75 % de los puntos = 6 pts)
+        "puntos": 0,
         "categorias_tipos": {
             "física": [
                 "física","fisico","físico","fisicas","físicas",
@@ -344,26 +342,25 @@ PREGUNTAS = [
                 "germen","gérmenes","patógeno","biologica","biológica",
             ],
         },
-        # Sub-parte 2 — ejemplos concretos (25 % de los puntos = 2 pts)
-        # Basta con que mencione al menos 1 ejemplo reconocible
         "ejemplos_keywords": [
             "polvo","cabello","pelo","vidrio","metal","astilla","residuo",
             "detergente","pesticida","cloro","veneno","químico",
             "bacteria","virus","hongo","microorganismo","germen",
             "suciedad","tierra","objeto","fragmento","partícula",
+            "acrílico","acrilico","piedra","horno",
         ],
         "comodin": "Piensa en los 3 grandes grupos de riesgos que pueden contaminar un alimento.",
     },
     # ── P4
     {
         "id": 4,
-        "texto": "Explique los procedimientos para lavado de utensilios a mano.",
+        "texto": "Explique los procedimientos para lavado de utensilios.",
         "tipo": "drag",
         "items_ordenados": ["Lavar", "Enjuagar", "Sanitizar", "Secar al aire"],
-        "puntos": 7,
+        "puntos": 0,
         "comodin": None,
     },
-    # ── P5  FIX: campos internos, sin mostrar "correcta" al jugador
+    # ── P5
     {
         "id": 5,
         "texto": "El cambio de agua y solución sanitizante debe realizarse cada ___ horas.",
@@ -372,13 +369,12 @@ PREGUNTAS = [
         "campos": [
             {
                 "label": "¿Cada cuántas horas?",
-                # INTERNO: nunca se muestra en pantalla
-                "correcta": "2",
+                "correcta": "2",          # INTERNO — nunca se muestra al jugador
                 "clave": "horas",
                 "alternativas": ["dos", "2 horas", "cada 2"],
             }
         ],
-        "puntos": 5,
+        "puntos": 0,
         "comodin": None,
     },
     # ── P6
@@ -386,8 +382,8 @@ PREGUNTAS = [
         "id": 6,
         "texto": "¿Cuáles son los síntomas de enfermedad que excluirían a una persona de venir a trabajar?",
         "tipo": "open_flexible_bonus",
-        "puntos": 8,
-        "puntos_bonus_no_gerencial": 3,
+        "puntos": 0,
+        "puntos_bonus_no_gerencial": 0,   # se calcula dinámicamente también
         "gerencial": True,
         "categorias": {
             "diarrea":   ["diarrea","evacuaciones","estomago","estómago","intestinal"],
@@ -399,6 +395,30 @@ PREGUNTAS = [
         "comodin": "Recuerda: son 5 síntomas. Piensa en los que afectan el sistema digestivo, la temperatura corporal y la piel.",
     },
 ]
+
+
+def asignar_puntos_dinamicos(preguntas: list) -> list:
+    """
+    Distribuye 100 puntos equitativamente entre todas las preguntas.
+    Si no divide exactamente, la última pregunta absorbe el residuo.
+    """
+    import copy
+    preguntas = copy.deepcopy(preguntas)
+    n = len(preguntas)
+    if n == 0:
+        return preguntas
+    pts_base = 100 // n          # puntos por pregunta (floor)
+    residuo  = 100 - pts_base * n
+    for i, p in enumerate(preguntas):
+        p["puntos"] = pts_base + (residuo if i == n - 1 else 0)
+        # Bonus para no-gerencial en P6 = ~10% del valor de la pregunta
+        if p["tipo"] == "open_flexible_bonus":
+            p["puntos_bonus_no_gerencial"] = max(1, round(p["puntos"] * 0.10))
+    return preguntas
+
+
+# PREGUNTAS con puntos ya calculados (se recalcula en mezclar_preguntas)
+PREGUNTAS = asignar_puntos_dinamicos(PREGUNTAS_BASE)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  HELPERS
@@ -434,7 +454,8 @@ def respuesta_abierta_correcta(respuesta: str, validas: list, umbral=0.45) -> bo
     return similarity_score(respuesta, validas) >= umbral
 
 def mezclar_preguntas(preguntas: list) -> list:
-    mezclables = preguntas[:]
+    """Mezcla aleatoriamente y reasigna puntos dinámicos sobre 100."""
+    mezclables = asignar_puntos_dinamicos(preguntas)
     random.shuffle(mezclables)
     return mezclables
 
@@ -829,7 +850,6 @@ def mostrar_top_bar():
     <div class="top-bar">
       <div><div class="logo">☕</div></div>
       <div><div class="title-text">Evaluación RSA</div></div>
-      <div style="font-size:.75rem; opacity:.8;">Starbucks</div>
     </div>""", unsafe_allow_html=True)
 
 def mostrar_codigo():
@@ -895,18 +915,16 @@ def render_open(pregunta, key_prefix, disabled=False):
 
 
 def render_open_flexible(pregunta, key_prefix, disabled=False):
-    st.markdown("💡 *Menciona los tipos que recuerdes.*")
     return st.text_area("Tu respuesta:", key=f"{key_prefix}_flex",
                         height=110,
-                        placeholder="Escribe tu respuesta…",
+                        placeholder="Aquí va tu respuesta",
                         disabled=disabled)
 
 
 def render_open_flexible_bonus(pregunta, key_prefix, disabled=False):
-    st.markdown("💡 *Menciona los síntomas que recuerdes.*")
     return st.text_area("Tu respuesta:", key=f"{key_prefix}_bonus",
                         height=110,
-                        placeholder="Escribe tu respuesta…",
+                        placeholder="Aquí va tu respuesta",
                         disabled=disabled)
 
 
@@ -929,7 +947,7 @@ def render_contaminacion_compuesta(pregunta, key_prefix, disabled=False):
         "¿Qué tipos de contaminación cruzada existen?",
         key=f"{key_prefix}_tipos",
         height=80,
-        placeholder="Escribe tu respuesta…",
+        placeholder="Aquí va tu respuesta",
         disabled=disabled,
     )
 
@@ -943,7 +961,7 @@ def render_contaminacion_compuesta(pregunta, key_prefix, disabled=False):
         "Escribe al menos un ejemplo de cualquier tipo:",
         key=f"{key_prefix}_ejemplos",
         height=80,
-        placeholder="Escribe tu respuesta…",
+        placeholder="Aquí va tu respuesta",
         disabled=disabled,
     )
 
@@ -994,7 +1012,7 @@ def render_fill(pregunta, key_prefix, disabled=False):
         val = st.text_input(
             campo["label"],          # label genérico ("¿Cada cuántas horas?")
             key=f"{key_prefix}_fill_{campo['clave']}",
-            placeholder="Escribe tu respuesta…",   # sin pista de la correcta
+            placeholder="Aquí va tu respuesta",
             disabled=disabled,
         )
         respuestas[campo["clave"]] = val
@@ -1009,7 +1027,6 @@ def pantalla_intro():
     st.markdown("""
     <div class="intro-hero">
       <h1>Hola compañero,<br>hacemos esto por tu bien ☕</h1>
-      <div class="sub">Evaluación RSA — Responsible Service of Alcohol</div>
     </div>""", unsafe_allow_html=True)
     with st.container():
         st.markdown('<div class="quiz-card">', unsafe_allow_html=True)
@@ -1239,13 +1256,9 @@ def pantalla_quiz():
 def pantalla_resultado():
     mostrar_top_bar()
 
-    # Puntos obtenidos (ya están capados por _cap en evaluar_respuesta)
-    score_final = st.session_state.puntaje
-
-    # FIX: porcentaje dinámico sobre la suma real de puntos máximos del examen
-    pts_maximos = sum(p["puntos"] for p in st.session_state.preguntas_orden)
-    pct = round((score_final / pts_maximos) * 100) if pts_maximos > 0 else 0
-    pct = min(pct, 100)  # techo de 100% por si bonus empuja más
+    # Los puntos ya están distribuidos sobre 100 por asignar_puntos_dinamicos
+    score_final = min(100, st.session_state.puntaje)
+    pct         = score_final   # directamente el porcentaje sobre 100
 
     st.markdown("""
     <div class="quiz-card" style="text-align:center; border: 2px solid var(--green-l);">
@@ -1258,21 +1271,21 @@ def pantalla_resultado():
     if score_final >= 70:
         st.markdown('<div class="confetti-msg">🎉🎊✨🎉🎊</div>', unsafe_allow_html=True)
 
-    if score_final == 100:
+    if pct == 100:
         msg = "🏆 Excelente estimado, ganaste un abrazo de tu líder RSA. ¡Canjéalo cuando quieras!"
-    elif score_final >= 90:
+    elif pct >= 90:
         msg = "⭐ Excelente resultado. ¡Dominas el RSA!"
-    elif score_final >= 70:
+    elif pct >= 70:
         msg = "👍 Buen trabajo. Sigue reforzando tus conocimientos."
-    elif score_final >= 50:
+    elif pct >= 50:
         msg = "📚 Debes reforzar algunos conceptos RSA."
     else:
-        msg = "⚠️ Urgente reforzar conocimientos RSA. ¡Pide apoyo a tu líder!"
+        msg = "⚠️ Urgente reforzar conocimientos. ¡Pide apoyo a tu líder RSA!"
 
     st.markdown(f"""
     <div class="score-card">
       <div class="big-score">{score_final}</div>
-      <div class="score-pct">{pct}% de {pts_maximos} puntos</div>
+      <div class="score-pct">{pct}% de 100 puntos</div>
       <div class="score-msg">{msg}</div>
     </div>""", unsafe_allow_html=True)
 
