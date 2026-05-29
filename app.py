@@ -434,17 +434,35 @@ def device_hash() -> str:
     raw = f"{time.time()}-{uuid.uuid4()}"
     return hashlib.md5(raw.encode()).hexdigest()[:8]
 
+def normalize_text(texto: str) -> str:
+    """
+    Normaliza texto para comparación flexible:
+    - minúsculas
+    - elimina tildes/acentos
+    - colapsa espacios
+    """
+    import unicodedata
+    texto = texto.strip().lower()
+    # Descomponer caracteres Unicode y eliminar marcas de acento (categoría Mn)
+    texto = unicodedata.normalize("NFD", texto)
+    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
+    # Colapsar espacios múltiples
+    texto = " ".join(texto.split())
+    return texto
+
+
 def similarity_score(respuesta: str, validas: list) -> float:
-    resp = respuesta.strip().lower()
+    """Similitud entre respuesta normalizada y lista de válidas normalizadas."""
+    resp = normalize_text(respuesta)
     best = 0.0
     for v in validas:
-        v_lower = v.lower()
-        if v_lower in resp or resp in v_lower:
+        v_norm = normalize_text(v)
+        if v_norm in resp or resp in v_norm:
             return 1.0
         if HAS_RAPIDFUZZ:
-            score = fuzz.partial_ratio(resp, v_lower) / 100
+            score = fuzz.partial_ratio(resp, v_norm) / 100
         else:
-            score = difflib.SequenceMatcher(None, resp, v_lower).ratio()
+            score = difflib.SequenceMatcher(None, resp, v_norm).ratio()
         best = max(best, score)
     return best
 
@@ -465,29 +483,50 @@ def mezclar_preguntas(preguntas: list) -> list:
 
 def evaluar_open_flexible_categorias(respuesta: str, categorias: dict, pts: int):
     """
-    Evaluación por categorías con umbral estricto.
-    - Respuesta menor a 3 chars → 0 pts siempre.
-    - Solo suma categoría si hay coincidencia EXACTA de substring (keyword in texto).
-    - Fuzzy solo como último recurso con umbral alto (0.75).
-    - Puntuación: 1 cat = 30%, 2 cat = proporcional, todas = 100%.
-    """
-    resp_lower = respuesta.strip().lower()
+    Evaluación por categorías con normalización completa.
 
-    # Respuesta demasiado corta = 0 puntos sin importar nada
-    if len(resp_lower) < 3:
+    Proceso por cada categoría:
+      1. Normaliza la respuesta (minúsculas + sin tildes + sin espacios extra).
+      2. Busca coincidencia de substring exacto con cada keyword normalizada.
+      3. Si no hay coincidencia exacta, aplica fuzzy con umbral 0.65.
+
+    Puntuación:
+      - 0 tipos: 0 pts
+      - 1 tipo:  30% de pts
+      - 2 tipos: proporcional
+      - 3 tipos: 100% de pts
+    """
+    resp_norm = normalize_text(respuesta)
+
+    # Respuesta vacía o demasiado corta = 0
+    if len(resp_norm) < 2:
         return False, 0, 0, len(categorias)
 
     encontradas = set()
     for nombre_cat, keywords in categorias.items():
-        # Coincidencia exacta de substring (más fiable)
-        for kw in keywords:
-            if kw in resp_lower:
+        kw_norms = [normalize_text(kw) for kw in keywords]
+
+        # 1) Substring exacto (con texto normalizado)
+        for kw_n in kw_norms:
+            if kw_n in resp_norm:
                 encontradas.add(nombre_cat)
                 break
-        # Fuzzy solo si no encontró por substring y umbral alto
+
+        # 2) Fuzzy si no encontró por substring
         if nombre_cat not in encontradas:
-            if similarity_score(resp_lower, keywords) >= 0.75:
-                encontradas.add(nombre_cat)
+            # Busca similitud palabra a palabra dentro de la respuesta
+            palabras = resp_norm.split()
+            for palabra in palabras:
+                for kw_n in kw_norms:
+                    if HAS_RAPIDFUZZ:
+                        score = fuzz.ratio(palabra, kw_n) / 100
+                    else:
+                        score = difflib.SequenceMatcher(None, palabra, kw_n).ratio()
+                    if score >= 0.65:
+                        encontradas.add(nombre_cat)
+                        break
+                if nombre_cat in encontradas:
+                    break
 
     n     = len(encontradas)
     total = len(categorias)
@@ -506,39 +545,54 @@ def evaluar_open_flexible_categorias(respuesta: str, categorias: dict, pts: int)
 
 def evaluar_contaminacion_compuesta(resp_tipos: str, resp_ejemplos: str, pregunta: dict):
     """
-    Evalúa la pregunta P3 compuesta:
-      - Tipos:    75% de los puntos (pts_tipos)
-      - Ejemplos: 25% de los puntos (pts_ejemplos)
-    """
-    pts_total   = pregunta["puntos"]
-    pts_tipos_max    = round(pts_total * 0.75)   # 6 pts
-    pts_ejemplos_max = pts_total - pts_tipos_max  # 2 pts
+    Evalúa P3 en dos partes independientes:
+      - Tipos    → 75% de puntos_total  (los 3 tipos son OBLIGATORIOS)
+      - Ejemplos → 25% de puntos_total  (al menos 1 ejemplo reconocible)
 
-    # ── Tipos
+    El total se SUMA correctamente: pts_tipos + pts_ejemplos.
+    Los ejemplos NO reemplazan los tipos — solo complementan.
+
+    También evalúa si el usuario mezcló tipos y ejemplos en un solo campo
+    (resp_tipos): en ese caso busca tanto tipos como ejemplos allí.
+    """
+    pts_total        = pregunta["puntos"]
+    pts_tipos_max    = round(pts_total * 0.75)
+    pts_ejemplos_max = pts_total - pts_tipos_max   # residuo exacto
+
+    # ── Combinar ambos campos para la búsqueda de tipos
+    # (el usuario puede haber escrito todo en el primer campo)
+    texto_completo = (resp_tipos + " " + resp_ejemplos).strip()
+
+    # ── Evaluación de tipos (obligatorios)
     _, pts_tipos_ganados, n, total = evaluar_open_flexible_categorias(
-        resp_tipos, pregunta["categorias_tipos"], pts_tipos_max
+        texto_completo, pregunta["categorias_tipos"], pts_tipos_max
     )
 
-    # ── Ejemplos (basta 1 ejemplo reconocible — solo por substring exacto)
-    resp_ej_lower = resp_ejemplos.strip().lower()
-    ejemplo_ok = False
-    if len(resp_ej_lower) >= 3:
-        ejemplo_ok = any(kw in resp_ej_lower for kw in pregunta["ejemplos_keywords"])
+    # ── Evaluación de ejemplos (complemento, basta 1)
+    # Busca en ambos campos combinados
+    resp_ej_norm = normalize_text(texto_completo)
+    ejemplo_ok   = False
+    if len(resp_ej_norm) >= 2:
+        kw_norms = [normalize_text(kw) for kw in pregunta["ejemplos_keywords"]]
+        ejemplo_ok = any(kw in resp_ej_norm for kw in kw_norms)
         if not ejemplo_ok:
-            ejemplo_ok = similarity_score(resp_ej_lower, pregunta["ejemplos_keywords"]) >= 0.75
+            ejemplo_ok = similarity_score(resp_ej_norm, pregunta["ejemplos_keywords"]) >= 0.65
     pts_ejemplos_ganados = pts_ejemplos_max if ejemplo_ok else 0
 
-    pts_total_ganados = pts_tipos_ganados + pts_ejemplos_ganados
-    correcto = (n == total) and ejemplo_ok
+    # ── Suma correcta de ambas partes
+    pts_total_ganados = pts_tipos_ganados + pts_ejemplos_ganados   # FIX: suma real
+
+    # Correcto = los 3 tipos presentes (ejemplos son bonus, no bloquean)
+    correcto = (n == total)
 
     meta = {
-        "n": n,
-        "total": total,
-        "pts_tipos": pts_tipos_ganados,
-        "pts_ejemplos": pts_ejemplos_ganados,
-        "pts_tipos_max": pts_tipos_max,
+        "n":               n,
+        "total":           total,
+        "pts_tipos":       pts_tipos_ganados,
+        "pts_ejemplos":    pts_ejemplos_ganados,
+        "pts_tipos_max":   pts_tipos_max,
         "pts_ejemplos_max": pts_ejemplos_max,
-        "ejemplo_ok": ejemplo_ok,
+        "ejemplo_ok":      ejemplo_ok,
     }
     return correcto, pts_total_ganados, meta
 
